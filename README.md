@@ -23,14 +23,29 @@ and **Microphone** permission.
 
 Trigger and live-text mode can also be switched straight from the menu bar.
 
+## Release gestures
+
+Once a hold is active, drag sideways before letting go (drag with the button held in
+press & hold mode, slide your finger in rest-finger mode):
+
+| Release after… | Result |
+|---|---|
+| little or no movement | Types what you said |
+| dragging **right** ~60 pt | Types it, then presses **Return** (sends in chat apps; only if something was transcribed) |
+| dragging **left** ~60 pt | **Cancels**: deletes everything typed and restores the replaced selection |
+
+The action is decided on release, so sliding back changes your mind; the overlay shows
+"↵ Send" or "✕ Cancel" while a gesture is armed. Mostly vertical movement is ignored.
+
 ## How it works
 
 - `ClickHoldTrigger` — a session event tap holds back mouse-downs over text fields.
   Release or movement before the hold duration replays the press as a normal click or
   drag; otherwise the app never sees it, so a selection under the pointer survives.
-  Dragging before any speech is heard cancels dictation and gives you the drag.
+  Once a hold is recognized, drags steer the release gesture instead of reaching the app.
 - `TouchHoldTrigger` — a fresh single touch that stays still for the hold duration.
-  Moving first, a second finger, a click, or (optionally) the bottom thumb zone aborts.
+  Moving restarts the clock; a second finger or (optionally) the bottom thumb zone aborts,
+  and a click before any speech cancels silently.
 - `DictationEngine` — mic → SpeechAnalyzer (`SpeechTranscriber`, falling back to
   `DictationTranscriber`); audio is buffered while the analyzer spins up.
 - `TextInjector` — synthesized Unicode keystrokes; diffs volatile text for minimal
@@ -48,4 +63,5 @@ binary directly from a shell aborts on a TCC check):
 | `HOTTY_DEBUG_TOUCH` | Logs raw trackpad contacts and rest-finger state changes (the MTTouch layout is private and read by offset) |
 | `HOTTY_DEBUG_AX` | Logs the Accessibility role chain under the pointer every second, to see why a text field isn't detected |
 | `HOTTY_OVERLAY_DEMO` | Runs six fake sessions through the overlay and menu bar icon at dictation speed |
+| `HOTTY_GESTURE_TEST` | In a focused **TextEdit** document (refuses any other app): replaces a selection then cancels, then dictates and sends |
 | `HOTTY_AUDIO_TEST` | Runs three start/finish recording cycles on the current input device |

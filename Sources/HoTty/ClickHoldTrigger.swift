@@ -6,8 +6,10 @@ import CoreGraphics
 protocol HoldDelegate: AnyObject {
     /// A hold was recognized at `point` (CG coordinates). Return false to reject it.
     func holdBegan(at point: CGPoint, placeCaret: Bool) -> Bool
+    /// The pointer moved during a recognized hold (for release gestures).
+    func holdMoved(to point: CGPoint)
     func holdEnded()
-    /// The user started dragging before speaking; drop the session silently.
+    /// The hold turned out not to be one (rest-finger: a click before any speech); drop it silently.
     func holdCancelled()
 }
 
@@ -22,7 +24,7 @@ final class SessionFlags: @unchecked Sendable {
         get { lock.withLock { _busy } }
         set { lock.withLock { _busy = newValue } }
     }
-    /// Nothing has been heard yet, so a drag may still turn the hold back into a click.
+    /// Nothing has been heard yet, so a click (rest-finger mode) may still call the hold off.
     var cancellable: Bool {
         get { lock.withLock { _cancellable } }
         set { lock.withLock { _cancellable = newValue } }
@@ -34,7 +36,8 @@ final class SessionFlags: @unchecked Sendable {
 /// A mouse-down over editable text is held back. If the button comes up or the pointer
 /// moves before the hold duration, the held event is replayed and the app sees a
 /// normal (slightly delayed) click or drag. If the duration passes, the app never sees
-/// the press at all, which keeps any selection under the pointer intact.
+/// the press at all, which keeps any selection under the pointer intact. From then on,
+/// drags steer the release gesture (send or cancel) instead of reaching the app.
 ///
 /// Runs on a dedicated thread so a busy main thread can't stall system input.
 final class ClickHoldTrigger: @unchecked Sendable {
@@ -161,12 +164,12 @@ final class ClickHoldTrigger: @unchecked Sendable {
                 replay(down, then: event)
                 state = .passthrough
                 return nil
-            case .holding(let down) where moved(event, from: down) && flags.cancellable:
-                DispatchQueue.main.async { [weak self] in self?.delegate?.holdCancelled() }
-                replay(down, then: event)
-                state = .passthrough
+            case .holding:
+                // Once a hold is recognized, drags only steer the release gesture.
+                let p = event.location
+                DispatchQueue.main.async { [weak self] in self?.delegate?.holdMoved(to: p) }
                 return nil
-            case .pending, .holding:
+            case .pending:
                 return nil
             case .idle, .passthrough:
                 return pass

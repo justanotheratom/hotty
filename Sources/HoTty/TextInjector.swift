@@ -36,15 +36,19 @@ final class TextInjector {
     private let queue = DispatchQueue(label: "hotty.injector", qos: .userInteractive)
 
     // Queue-confined state.
-    private var shownVolatile = ""   // volatile text currently typed into the field
-    private var context: String?     // tail of the text before the insertion point; nil = unknown
+    private var shownVolatile = ""      // volatile text currently typed into the field
+    private var committed = ""          // everything committed this session, as typed
+    private var replacedSelection = ""  // selected text the session's first keystroke replaced
+    private var context: String?        // tail of the text before the insertion point; nil = unknown
 
-    /// Starts a session. `textBefore` runs on the injector queue, before any typing,
-    /// and returns the text preceding the caret ("" at the start of a field), or nil
-    /// when the app doesn't expose it.
-    func begin(textBefore: @escaping () -> String?) {
+    /// Starts a session. `selection` is the selected text typing will replace ("" if none).
+    /// `textBefore` runs on the injector queue, before any typing, and returns the text
+    /// preceding the caret ("" at the start of a field), or nil when the app doesn't say.
+    func begin(selection: String, textBefore: @escaping () -> String?) {
         queue.async {
             self.shownVolatile = ""
+            self.committed = ""
+            self.replacedSelection = selection
             self.context = textBefore()
         }
     }
@@ -64,15 +68,37 @@ final class TextInjector {
             let target = self.decorate(text)
             self.transition(from: self.shownVolatile, to: target)
             self.shownVolatile = ""
+            self.committed += target
             self.context = String(((self.context ?? "") + target).suffix(16))
         }
     }
 
-    /// Removes any volatile text still shown (used on cancel).
-    func clearVolatile() {
+    /// Undoes the whole session: deletes everything typed and, if typing replaced a
+    /// selection, types it back and selects it again.
+    func revert() {
         queue.async {
-            self.transition(from: self.shownVolatile, to: "")
+            let typed = self.committed + self.shownVolatile
+            self.committed = ""
             self.shownVolatile = ""
+            guard !typed.isEmpty else { return }   // nothing typed: the selection is untouched
+            self.backspace(typed.count)
+            let original = self.replacedSelection
+            guard !original.isEmpty else { return }
+            self.type(original)
+            for _ in 0..<original.count {
+                self.key(123, down: true, flags: .maskShift); self.key(123, down: false, flags: .maskShift)   // ⇧←
+                usleep(1500)
+            }
+        }
+    }
+
+    /// Presses Return, but only if the session actually typed something, so a stray
+    /// gesture can't submit an empty form.
+    func pressReturnIfTyped() {
+        queue.async {
+            guard !self.committed.isEmpty else { return }
+            usleep(30_000)   // let the app finish handling the last characters
+            self.key(36, down: true); self.key(36, down: false)   // kVK_Return
         }
     }
 
@@ -144,9 +170,9 @@ final class TextInjector {
         send()
     }
 
-    private func key(_ code: CGKeyCode, down: Bool) {
+    private func key(_ code: CGKeyCode, down: Bool, flags: CGEventFlags = []) {
         guard let e = CGEvent(keyboardEventSource: Synth.source, virtualKey: code, keyDown: down) else { return }
-        e.flags = []
+        e.flags = flags
         Synth.post(e, tap: .cghidEventTap)
     }
 }

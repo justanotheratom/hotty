@@ -30,6 +30,11 @@ final class Coordinator: HoldDelegate {
     private var session = 0
     private var live = LiveMode.overlay
     private var pendingVolatile = ""   // volatile text not yet replaced by a final result
+    private var anchor = CGPoint.zero   // where the hold began; release gestures are measured from here
+    private var action = ReleaseAction.finish
+
+    /// How far (points) the pointer must travel sideways for a release gesture.
+    private static let gestureDistance: CGFloat = 60
 
     init() {
         engine.onStatusChange = { [weak self] in
@@ -82,25 +87,31 @@ final class Coordinator: HoldDelegate {
             return false
         }
 
-        let overSelection = AX.selectionContains(target, p)
-        if overSelection {
+        // Remember any selection typing will replace, so cancel can restore it.
+        var replacedSelection = ""
+        if AX.selectionContains(target, p) {
             // Replace the selection: focus without clicking so it survives.
             if !isFocused(target) { AX.focus(target) }
+            replacedSelection = AX.selectedText(target)
         } else if Pref.caret == .atPointer || !isFocused(target) {
             Synth.click(at: p)
+        } else {
+            replacedSelection = AX.selectedText(target)
         }
 
         session += 1
         let id = session
         live = Pref.live
         pendingVolatile = ""
+        anchor = p
+        action = .finish
         let cb = DictationEngine.Callbacks(
             volatile: { [weak self] s in self?.onVolatile(s, session: id) },
             final: { [weak self] s in self?.onFinal(s, session: id) },
             level: { [weak self] l in if self?.session == id { self?.overlay.setLevel(l) } },
             interrupted: { [weak self] in
                 // Keep what was said so far, as if the user had let go.
-                if self?.session == id { self?.holdEnded() }
+                if self?.session == id { self?.finish(pressReturn: false) }
             }
         )
         do {
@@ -115,17 +126,49 @@ final class Coordinator: HoldDelegate {
         flags.cancellable = true
         state.listening = true
         // Read the text before the caret once the app has handled our click.
-        injector.begin { usleep(80_000); return AX.textBeforeCaret() }
+        injector.begin(selection: replacedSelection) { usleep(80_000); return AX.textBeforeCaret() }
         overlay.show(at: p)
         play("Tink")
         return true
     }
 
+    /// Dragging sideways picks what releasing will do: right sends (adds Return), left
+    /// cancels. Mostly vertical movement is ignored, so a wobbly hold does nothing.
+    func holdMoved(to p: CGPoint) {
+        guard phase == .listening else { return }
+        let dx = p.x - anchor.x, dy = p.y - anchor.y
+        let new: ReleaseAction
+        if abs(dx) < Self.gestureDistance || abs(dy) > abs(dx) {
+            new = .finish
+        } else {
+            new = dx > 0 ? .send : .cancel
+        }
+        guard new != action else { return }
+        action = new
+        overlay.setAction(new)
+        if new != .finish { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
+    }
+
     func holdEnded() {
+        guard phase == .listening else { return }
+        switch action {
+        case .finish: finish(pressReturn: false)
+        case .send: finish(pressReturn: true)
+        case .cancel: cancelAndRevert()
+        }
+    }
+
+    /// A click before any speech (rest-finger mode): the rest was a pause, not a hold.
+    func holdCancelled() {
+        guard phase == .listening else { return }
+        cancelAndRevert(sound: false)
+    }
+
+    private func finish(pressReturn: Bool) {
         guard phase == .listening else { return }
         phase = .finishing
         overlay.finishing()
-        play("Pop")
+        play(pressReturn ? "Glass" : "Pop")
         let id = session
         Task {
             await engine.finish()
@@ -133,14 +176,16 @@ final class Coordinator: HoldDelegate {
             // Anything the recognizer never finalized still gets typed.
             if !pendingVolatile.isEmpty { injector.commit(pendingVolatile) }
             pendingVolatile = ""
+            if pressReturn { injector.pressReturnIfTyped() }
             injector.flush { DispatchQueue.main.async { self.endSession(id) } }
         }
     }
 
-    func holdCancelled() {
-        guard phase == .listening else { return }
+    /// Stops listening and puts the field back as it was before the hold.
+    private func cancelAndRevert(sound: Bool = true) {
         engine.cancel()
-        injector.clearVolatile()
+        injector.revert()
+        if sound { play("Bottle") }
         endSession(session)
     }
 
@@ -192,6 +237,9 @@ final class Coordinator: HoldDelegate {
                 self.overlay.setLevel(Float(abs(sin(Double(i) / 5))))
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            self.overlay.setAction([ReleaseAction.finish, .send, .cancel][round % 3])
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             self.overlay.setText("")
             self.overlay.finishing()
@@ -201,6 +249,41 @@ final class Coordinator: HoldDelegate {
             self.state.listening = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.demoOverlay(round: round + 1) }
         }
+    }
+
+    /// HOTTY_GESTURE_TEST=1: in the focused text field, replaces a selection then cancels
+    /// (text and selection should come back), then dictates at the end and sends (adds Return).
+    func gestureSelfTest() {
+        func log(_ step: String) {
+            guard let el = AX.focusedElement else { return NSLog("HoTty gesture test %@: no focus", step) }
+            let value: String = AX.attr(el, kAXValueAttribute) ?? "?"
+            NSLog("HoTty gesture test %@: value=%@ selected=%@", step, value.debugDescription, AX.selectedText(el).debugDescription)
+        }
+        // This test types into the focused field, so it must never touch anything but TextEdit.
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.TextEdit",
+              let el = AX.focusedElement, AX.pid(el) == NSWorkspace.shared.frontmostApplication?.processIdentifier
+        else { return NSLog("HoTty gesture test: aborted, TextEdit is not the focused app") }
+        AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, "Hello world, testing." as CFString)
+        var r = CFRange(location: 6, length: 5)
+        AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, AXValueCreate(.cfRange, &r)!)
+        log("start")
+        injector.begin(selection: AX.selectedText(el)) { AX.textBeforeCaret() }
+        injector.commit("Brave new")
+        // The app handles posted keystrokes asynchronously; give it a moment before reading.
+        injector.flush { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            log("typed")
+            self.injector.revert()
+            self.injector.flush { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                log("cancelled")
+                let v: String = AX.attr(el, kAXValueAttribute) ?? ""
+                var end = CFRange(location: v.utf16.count, length: 0)
+                AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, AXValueCreate(.cfRange, &end)!)
+                self.injector.begin(selection: "") { AX.textBeforeCaret() }
+                self.injector.commit("Line two")
+                self.injector.pressReturnIfTyped()
+                self.injector.flush { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { log("sent") } }
+            } }
+        } }
     }
 
     /// HOTTY_AUDIO_TEST=1: three start/finish cycles on the current input device, logged.

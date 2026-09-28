@@ -6,9 +6,9 @@ import AppKit
 /// runtime so HoTty still launches if Apple changes or removes it.
 ///
 /// One finger that stays still for the hold duration triggers; moving restarts the
-/// clock, so "slide the pointer onto a field, then rest" works. If the rest turns out
-/// to be a pause before a click (a click or further movement before any speech is
-/// heard), the session is cancelled silently. A second finger aborts, and touches in
+/// clock, so "slide the pointer onto a field, then rest" works. Once holding, sliding
+/// steers the release gesture; a click before any speech is heard means the rest was a
+/// pause before clicking, and the session is cancelled silently. A second finger aborts, and touches in
 /// the bottom edge (where thumbs rest) can be ignored.
 final class TouchHoldTrigger: @unchecked Sendable {
     private weak var delegate: HoldDelegate?
@@ -21,7 +21,7 @@ final class TouchHoldTrigger: @unchecked Sendable {
         /// Waiting for stillness. `since` is .infinity after a rejected hold, so it
         /// waits for the finger to move before trying again.
         case tracking(id: Int32, anchor: CGPoint, since: Double)
-        case holding(id: Int32, anchor: CGPoint)
+        case holding(id: Int32, anchor: CGPoint)   // released when every finger lifts
         case blocked   // ignore everything until all fingers lift
     }
     private var state = State.idle {
@@ -130,14 +130,17 @@ final class TouchHoldTrigger: @unchecked Sendable {
                 }
             }
 
-        case .holding(let id, let anchor):
+        case .holding:
             if touching.isEmpty {
                 state = .idle
                 event = { [weak self] in self?.delegate?.holdEnded() }
-            } else if flags.cancellable, click || (single?.id == id && moved(single!, from: anchor)) {
-                // Nothing said yet: this was a pause before clicking or moving on.
+            } else if click && flags.cancellable {
+                // Nothing said yet: this was a pause before clicking.
                 state = .blocked
                 event = { [weak self] in self?.delegate?.holdCancelled() }
+            } else {
+                // Sliding the finger steers the release gesture (send or cancel).
+                event = { [weak self] in self?.delegate?.holdMoved(to: ScreenGeometry.mouseCG) }
             }
 
         case .blocked:

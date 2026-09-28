@@ -142,6 +142,10 @@ enum AX {
         return (v as! AXValue)
     }
 
+    static func selectedText(_ el: AXUIElement) -> String {
+        attr(el, kAXSelectedTextAttribute) ?? ""
+    }
+
     static var focusedElement: AXUIElement? {
         AXUIElementSetMessagingTimeout(systemWide, 0.25)
         return element(systemWide, kAXFocusedUIElementAttribute)

@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 
+/// What releasing the hold will do, chosen by dragging sideways.
+enum ReleaseAction {
+    case finish   // type what was said
+    case send     // type it, then press Return
+    case cancel   // discard and restore the field
+}
+
 @MainActor @Observable
 final class OverlayModel {
     enum Phase { case listening, finishing }
@@ -8,6 +15,7 @@ final class OverlayModel {
     var text = ""                 // display text, already trimmed to fit
     var textWidth: CGFloat = 0    // grows during a session, never shrinks, so the panel doesn't jitter
     var level: Float = 0
+    var action = ReleaseAction.finish
 }
 
 /// A small non-activating panel near the pointer: a live level meter, plus the words
@@ -25,7 +33,7 @@ final class OverlayController {
     /// AppKit update-constraints loops that abort the app. The visible box is drawn
     /// inside, pinned top-left, and the rest of the panel is transparent and click-through.
     fileprivate static let shadowInset: CGFloat = 14
-    private static let panelSize = CGSize(width: maxTextWidth + 80 + shadowInset * 2, height: 72 + shadowInset * 2)
+    private static let panelSize = CGSize(width: maxTextWidth + 180 + shadowInset * 2, height: 72 + shadowInset * 2)
 
     func show(at cgPoint: CGPoint) {
         anchor = cgPoint
@@ -33,6 +41,7 @@ final class OverlayController {
         model.text = ""
         model.textWidth = 0
         model.level = 0
+        model.action = .finish
         let panel = self.panel ?? makePanel()
         self.panel = panel
         reposition()
@@ -47,6 +56,7 @@ final class OverlayController {
     }
 
     func setLevel(_ l: Float) { model.level = l }
+    func setAction(_ a: ReleaseAction) { model.action = a }
     func finishing() { model.phase = .finishing }
     func hide() { panel?.orderOut(nil) }
 
@@ -112,6 +122,14 @@ struct OverlayView: View {
     let model: OverlayModel
     private static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
+    private var tint: Color? {
+        switch model.action {
+        case .finish: nil
+        case .send: .accentColor
+        case .cancel: .red
+        }
+    }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             LevelMeter(level: model.phase == .listening ? model.level : 0, active: model.phase == .listening)
@@ -122,21 +140,44 @@ struct OverlayView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     Text(model.text)
-                        .foregroundStyle(.primary.opacity(0.88))
+                        .foregroundStyle(.primary.opacity(model.action == .cancel ? 0.35 : 0.88))
+                        .strikethrough(model.action == .cancel, color: .red.opacity(0.6))
                         .lineSpacing(2)
                         .frame(width: model.textWidth, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .font(Font(OverlayController.font))
+            if model.action != .finish {
+                ActionBadge(action: model.action)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 5 }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.thickMaterial, in: Self.shape)
-        .overlay(Self.shape.strokeBorder(.primary.opacity(0.08), lineWidth: 0.5))
+        .overlay(Self.shape.strokeBorder(tint?.opacity(0.7) ?? .primary.opacity(0.08), lineWidth: tint == nil ? 0.5 : 1.5))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
         .padding(OverlayController.shadowInset)   // room for the shadow inside the transparent panel
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// "↵ Send" / "✕ Cancel": what letting go will do.
+private struct ActionBadge: View {
+    let action: ReleaseAction
+
+    var body: some View {
+        let (label, icon, color): (String, String, Color) = action == .send
+            ? ("Send", "return", .accentColor)
+            : ("Cancel", "xmark", .red)
+        Label(label, systemImage: icon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color, in: Capsule())
+            .fixedSize()
     }
 }
 
