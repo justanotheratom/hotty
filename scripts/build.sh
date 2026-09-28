@@ -14,8 +14,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/HoTty"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-IDENTITY=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')}
+# Pick by SHA-1 (names can be ambiguous) and skip revoked certificates.
+IDENTITY=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/Apple Development/ && !/REVOKED/ {print $2; exit}')}
 IDENTITY=${IDENTITY:--}
 codesign --force --options runtime --entitlements Resources/HoTty.entitlements --sign "$IDENTITY" "$APP"
 echo "Built $APP (signed: $IDENTITY)"
