@@ -13,6 +13,8 @@ final class AppState {
 
 /// Owns the active trigger and runs each dictation session:
 /// hold → place caret or keep selection → listen → type → release → finalize.
+/// Dragging up before release locks the session into hands-free mode, which then ends
+/// only from the overlay's Cancel / Finish / Send buttons.
 @MainActor
 final class Coordinator: HoldDelegate {
     let state = AppState()
@@ -25,22 +27,26 @@ final class Coordinator: HoldDelegate {
     private var touch: TouchHoldTrigger?
     private var activeTrigger: TriggerMode?
 
-    private enum Phase { case idle, listening, finishing }
+    private enum Phase { case idle, listening, locked, finishing }
     private var phase = Phase.idle
     private var session = 0
     private var live = LiveMode.overlay
     private var pendingVolatile = ""   // volatile text not yet replaced by a final result
     private var anchor = CGPoint.zero   // where the hold began; release gestures are measured from here
     private var action = ReleaseAction.finish
+    private var focusPoll: Timer?       // hands-free: resumes typing when the field regains focus
 
-    /// How far (points) the pointer must travel sideways for a release gesture.
+    /// How far (points) the pointer must travel for a release gesture.
     private static let gestureDistance: CGFloat = 60
+    /// Movement (points) after which the overlay hints at the gestures.
+    private static let hintDistance: CGFloat = 15
 
     init() {
         engine.onStatusChange = { [weak self] in
             guard let self else { return }
             self.state.modelStatus = self.engine.modelStatus
         }
+        overlay.onButton = { [weak self] action in self?.lockedButton(action) }
     }
 
     // MARK: - Setup
@@ -111,6 +117,7 @@ final class Coordinator: HoldDelegate {
             level: { [weak self] l in if self?.session == id { self?.overlay.setLevel(l) } },
             interrupted: { [weak self] in
                 // Keep what was said so far, as if the user had let go.
+                NSLog("HoTty: audio device changed mid-session")
                 if self?.session == id { self?.finish(pressReturn: false) }
             }
         )
@@ -132,16 +139,19 @@ final class Coordinator: HoldDelegate {
         return true
     }
 
-    /// Dragging sideways picks what releasing will do: right sends (adds Return), left
-    /// cancels. Mostly vertical movement is ignored, so a wobbly hold does nothing.
+    /// Dragging picks what releasing will do: right sends (adds Return), left cancels,
+    /// up locks into hands-free mode. Diagonal movement counts for its dominant direction.
     func holdMoved(to p: CGPoint) {
         guard phase == .listening else { return }
-        let dx = p.x - anchor.x, dy = p.y - anchor.y
+        let dx = p.x - anchor.x, dy = p.y - anchor.y   // CG coordinates: y grows downward
+        if hypot(dx, dy) > Self.hintDistance { overlay.setHint(true) }
         let new: ReleaseAction
-        if abs(dx) < Self.gestureDistance || abs(dy) > abs(dx) {
-            new = .finish
-        } else {
+        if abs(dy) > abs(dx) {
+            new = -dy >= Self.gestureDistance ? .lock : .finish
+        } else if abs(dx) >= Self.gestureDistance {
             new = dx > 0 ? .send : .cancel
+        } else {
+            new = .finish
         }
         guard new != action else { return }
         action = new
@@ -155,6 +165,7 @@ final class Coordinator: HoldDelegate {
         case .finish: finish(pressReturn: false)
         case .send: finish(pressReturn: true)
         case .cancel: cancelAndRevert()
+        case .lock: lock()
         }
     }
 
@@ -164,29 +175,86 @@ final class Coordinator: HoldDelegate {
         cancelAndRevert(sound: false)
     }
 
+    // MARK: - Hands-free
+
+    /// Keeps listening after release. From here on HoTty ignores gestures and keys (new
+    /// holds pass through as clicks while `flags.busy`), and only the overlay buttons end it.
+    private func lock() {
+        phase = .locked
+        flags.cancellable = false
+        // In-progress words move to the overlay: typing and backspacing them live could
+        // land in another app the moment focus moves. Final phrases are still typed.
+        if live == .inline { injector.showVolatile("") }
+        live = .overlay
+        overlay.setText(pendingVolatile)
+        overlay.setLocked(true)
+        play("Morse")
+        focusPoll = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.phase == .locked else { return }
+                self.injector.resumeIfFocused()
+                self.overlay.setWaiting(self.injector.waitingWords)
+            }
+        }
+    }
+
+    private func lockedButton(_ action: ReleaseAction) {
+        guard phase == .locked else { return }
+        switch action {
+        case .cancel: cancelAndRevert()
+        case .send: finish(pressReturn: true)
+        case .finish, .lock: finish(pressReturn: false)
+        }
+    }
+
+    // MARK: - Ending
+
     private func finish(pressReturn: Bool) {
-        guard phase == .listening else { return }
+        guard phase == .listening || phase == .locked else { return }
+        if ProcessInfo.processInfo.environment["HOTTY_LOCK_TEST"] != nil {
+            NSLog("HoTty session: finish(pressReturn: %d) from phase %@", pressReturn ? 1 : 0, "\(phase)")
+        }
+        let wasLocked = phase == .locked
         phase = .finishing
+        stopFocusPoll()
         overlay.finishing()
         play(pressReturn ? "Glass" : "Pop")
         let id = session
         Task {
+            // Finishing from the overlay while elsewhere: bring the field back first.
+            if wasLocked, injector.waitingWords > 0, let target = injector.targetElement {
+                AX.focus(target)
+                try? await Task.sleep(for: .milliseconds(250))
+            }
             await engine.finish()
             guard id == session else { return }
             // Anything the recognizer never finalized still gets typed.
             if !pendingVolatile.isEmpty { injector.commit(pendingVolatile) }
             pendingVolatile = ""
-            if pressReturn { injector.pressReturnIfTyped() }
-            injector.flush { DispatchQueue.main.async { self.endSession(id) } }
+            injector.finish(pressReturn: pressReturn) { leftover in
+                guard let leftover else { return self.endSession(id) }
+                // The field never came back (closed, navigated away): don't lose the words.
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(leftover, forType: .string)
+                self.overlay.flash("Copied to clipboard")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.endSession(id) }
+            }
         }
     }
 
     /// Stops listening and puts the field back as it was before the hold.
     private func cancelAndRevert(sound: Bool = true) {
+        if ProcessInfo.processInfo.environment["HOTTY_LOCK_TEST"] != nil { NSLog("HoTty session: cancel from phase %@", "\(phase)") }
+        stopFocusPoll()
         engine.cancel()
         injector.revert()
         if sound { play("Bottle") }
         endSession(session)
+    }
+
+    private func stopFocusPoll() {
+        focusPoll?.invalidate()
+        focusPoll = nil
     }
 
     // MARK: - Results
@@ -280,10 +348,83 @@ final class Coordinator: HoldDelegate {
                 AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, AXValueCreate(.cfRange, &end)!)
                 self.injector.begin(selection: "") { AX.textBeforeCaret() }
                 self.injector.commit("Line two")
-                self.injector.pressReturnIfTyped()
-                self.injector.flush { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { log("sent") } }
+                self.injector.finish(pressReturn: true) { _ in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { log("sent") }
+                }
             } }
         } }
+    }
+
+    /// HOTTY_LOCK_TEST=1: in a focused TextEdit document, runs a hands-free session with
+    /// simulated recognition: lock, type a phrase, switch to Finder (a phrase arrives and
+    /// must wait), then clicks the overlay's real Finish button, which must bring TextEdit
+    /// back and type the waiting phrase.
+    func lockSelfTest() {
+        func value() -> String {
+            AX.focusedElement.flatMap { AX.attr($0, kAXValueAttribute) as String? } ?? "?"
+        }
+        guard let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier == "com.apple.TextEdit",
+              let field = AX.focusedElement, AX.pid(field) == front.processIdentifier, let frame = AX.frame(field)
+        else { return NSLog("HoTty lock test: aborted, TextEdit is not the focused app") }
+        AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "Start." as CFString)
+        let p = CGPoint(x: frame.minX + 200, y: frame.minY + 40)
+        guard holdBegan(at: p, placeCaret: true) else { return NSLog("HoTty lock test: hold rejected") }
+        holdMoved(to: CGPoint(x: p.x + 5, y: p.y - 80))
+        holdEnded()
+        NSLog("HoTty lock test: phase after release = %@", "\(phase)")
+        let id = session
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.onFinal("Typed while focused.", session: id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                NSLog("HoTty lock test: TextEdit value = %@", value().debugDescription)
+                NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == "com.apple.finder" }?.activate()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.onFinal("Said while away.", session: id)
+                    NSLog("HoTty lock test: away phrase delivered")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        NSLog("HoTty lock test: frontmost = %@, waiting words = %d",
+                              NSWorkspace.shared.frontmostApplication?.localizedName ?? "?", self.injector.waitingWords)
+                        self.clickOwnButton("Finish") {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                NSLog("HoTty lock test: after Finish, frontmost = %@, phase = %@, value = %@",
+                                      NSWorkspace.shared.frontmostApplication?.localizedName ?? "?", "\(self.phase)",
+                                      value().debugDescription)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Finds one of HoTty's own overlay buttons through Accessibility (off the main
+    /// thread, which has to answer the query) and clicks it with a real mouse event.
+    private func clickOwnButton(_ title: String, then: @escaping () -> Void) {
+        DispatchQueue.global().async {
+            let app = AXUIElementCreateApplication(AX.ownPID)
+            var found: CGRect?
+            func search(_ el: AXUIElement, depth: Int) {
+                guard found == nil, depth < 12 else { return }
+                let role: String? = AX.attr(el, kAXRoleAttribute)
+                let label: String = AX.attr(el, kAXTitleAttribute) ?? AX.attr(el, kAXDescriptionAttribute) ?? ""
+                if role == kAXButtonRole, label.contains(title) { found = AX.frame(el); return }
+                for c in (AX.attr(el, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { search(c, depth: depth + 1) }
+            }
+            for w in (AX.attr(app, kAXWindowsAttribute) as [AXUIElement]?) ?? [] { search(w, depth: 0) }
+            guard let r = found else {
+                NSLog("HoTty lock test: %@ button not found", title)
+                return DispatchQueue.main.async(execute: then)
+            }
+            let c = CGPoint(x: r.midX, y: r.midY)
+            NSLog("HoTty lock test: clicking %@ at %@", title, "\(c)")
+            CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: c, mouseButton: .left)?.post(tap: .cghidEventTap)
+            usleep(300_000)   // let the overlay notice the pointer and start accepting clicks
+            for t in [CGEventType.leftMouseDown, .leftMouseUp] {
+                CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: c, mouseButton: .left)?.post(tap: .cghidEventTap)
+                usleep(50_000)
+            }
+            DispatchQueue.main.async(execute: then)
+        }
     }
 
     /// HOTTY_AUDIO_TEST=1: three start/finish cycles on the current input device, logged.

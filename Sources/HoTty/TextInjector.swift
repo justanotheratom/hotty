@@ -37,53 +37,118 @@ final class TextInjector {
 
     // Queue-confined state.
     private var shownVolatile = ""      // volatile text currently typed into the field
-    private var committed = ""          // everything committed this session, as typed
+    private var committed = ""          // text committed in the current segment, as typed
+    private var typedAny = false        // anything typed this session, in any segment
     private var replacedSelection = ""  // selected text the session's first keystroke replaced
     private var context: String?        // tail of the text before the insertion point; nil = unknown
+    private var target: AXUIElement?    // the field this session types into
+    private var paused = false          // target lost focus: hold phrases in `waiting`
+    private var waiting: [String] = []  // final phrases held while paused
+    private var segment = 0             // bumped each time typing resumes after a pause
+
+    /// Words held while the target field doesn't have focus, for the overlay.
+    private let countLock = NSLock()
+    private var _waitingWords = 0
+    var waitingWords: Int { countLock.withLock { _waitingWords } }
 
     /// Starts a session. `selection` is the selected text typing will replace ("" if none).
     /// `textBefore` runs on the injector queue, before any typing, and returns the text
     /// preceding the caret ("" at the start of a field), or nil when the app doesn't say.
+    /// The element focused at that moment becomes the session's target: text is only
+    /// ever typed while it has focus.
     func begin(selection: String, textBefore: @escaping () -> String?) {
         queue.async {
             self.shownVolatile = ""
             self.committed = ""
+            self.typedAny = false
             self.replacedSelection = selection
             self.context = textBefore()
+            self.target = AX.focusedElement
+            self.paused = false
+            self.waiting = []
+            self.segment = 0
+            self.setWaitingWords(0)
         }
     }
 
     /// Inline mode: replace the currently shown volatile text with `text`.
     func showVolatile(_ text: String) {
         queue.async {
+            guard !self.paused, self.targetFocused() else { return }
             let target = self.decorate(text)
             self.transition(from: self.shownVolatile, to: target)
             self.shownVolatile = target
         }
     }
 
-    /// Commits a finalized phrase, replacing any shown volatile text.
+    /// Commits a finalized phrase, replacing any shown volatile text. If the target
+    /// field has lost focus, the phrase is held until it gets focus back.
     func commit(_ text: String) {
         queue.async {
-            let target = self.decorate(text)
-            self.transition(from: self.shownVolatile, to: target)
-            self.shownVolatile = ""
-            self.committed += target
-            self.context = String(((self.context ?? "") + target).suffix(16))
+            guard !self.paused, self.targetFocused() else {
+                self.paused = true
+                self.waiting.append(text)
+                self.setWaitingWords(self.waiting.joined(separator: " ").split(separator: " ").count)
+                return
+            }
+            self.type(committing: text)
         }
     }
 
-    /// Undoes the whole session: deletes everything typed and, if typing replaced a
-    /// selection, types it back and selects it again.
+    /// If typing is paused and the target has focus again, types the held phrases at the
+    /// caret. Typing resumes as a new segment, since the caret may have moved.
+    func resumeIfFocused() {
+        queue.async {
+            guard self.paused, self.targetFocused() else { return }
+            self.paused = false
+            self.segment += 1
+            self.committed = ""
+            self.shownVolatile = ""
+            self.context = AX.textBeforeCaret()
+            for phrase in self.waiting { self.type(committing: phrase) }
+            self.waiting = []
+            self.setWaitingWords(0)
+        }
+    }
+
+    /// Ends the session: types anything held if the target has focus, then presses
+    /// Return when asked (only if something was typed). Calls back on the main queue
+    /// with text that could not be typed because the target never got focus back.
+    func finish(pressReturn: Bool, completion: @escaping (_ leftover: String?) -> Void) {
+        queue.async {
+            if self.paused, self.targetFocused() {
+                self.paused = false
+                self.segment += 1
+                self.context = AX.textBeforeCaret()
+                for phrase in self.waiting { self.type(committing: phrase) }
+                self.waiting = []
+            }
+            let leftover = self.waiting.isEmpty ? nil
+                : self.waiting.map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+            self.waiting = []
+            self.setWaitingWords(0)
+            if pressReturn, self.typedAny, leftover == nil, self.targetFocused() {
+                usleep(30_000)   // let the app finish handling the last characters
+                self.key(36, down: true); self.key(36, down: false)   // kVK_Return
+            }
+            DispatchQueue.main.async { completion(leftover) }
+        }
+    }
+
+    /// Undoes the session as far as it safely can: deletes what was typed since the last
+    /// pause (earlier segments may be anywhere) and, if nothing was paused, types back the
+    /// selection it replaced and selects it again. Never types unless the target has focus.
     func revert() {
         queue.async {
             let typed = self.committed + self.shownVolatile
             self.committed = ""
             self.shownVolatile = ""
-            guard !typed.isEmpty else { return }   // nothing typed: the selection is untouched
+            self.waiting = []
+            self.setWaitingWords(0)
+            guard !typed.isEmpty, self.targetFocused() else { return }   // nothing typed: selection untouched
             self.backspace(typed.count)
             let original = self.replacedSelection
-            guard !original.isEmpty else { return }
+            guard !original.isEmpty, self.segment == 0 else { return }
             self.type(original)
             for _ in 0..<original.count {
                 self.key(123, down: true, flags: .maskShift); self.key(123, down: false, flags: .maskShift)   // ⇧←
@@ -92,15 +157,29 @@ final class TextInjector {
         }
     }
 
-    /// Presses Return, but only if the session actually typed something, so a stray
-    /// gesture can't submit an empty form.
-    func pressReturnIfTyped() {
-        queue.async {
-            guard !self.committed.isEmpty else { return }
-            usleep(30_000)   // let the app finish handling the last characters
-            self.key(36, down: true); self.key(36, down: false)   // kVK_Return
-        }
+    /// The field HoTty types into, for bringing it back to the front.
+    var targetElement: AXUIElement? { queue.sync { target } }
+
+    private func type(committing text: String) {
+        let target = decorate(text)
+        transition(from: shownVolatile, to: target)
+        shownVolatile = ""
+        committed += target
+        if !target.isEmpty { typedAny = true }
+        context = String(((context ?? "") + target).suffix(16))
     }
+
+    /// Whether keyboard focus is still in the session's field. Unknown focus counts as
+    /// focused only when the target's app is frontmost.
+    private func targetFocused() -> Bool {
+        guard let target else { return true }
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard front == AX.pid(target) else { return false }
+        guard let focused = AX.focusedElement else { return true }
+        return AX.isSameOrRelated(focused, target)
+    }
+
+    private func setWaitingWords(_ n: Int) { countLock.withLock { _waitingWords = n } }
 
     /// Runs `block` after every queued keystroke has been posted.
     func flush(_ block: @escaping () -> Void) { queue.async(execute: block) }

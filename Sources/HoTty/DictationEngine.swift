@@ -95,25 +95,12 @@ final class DictationEngine {
         input = cont
         finishSignal = finishCont
 
-        let audio = AVAudioEngine()
-        let node = audio.inputNode
-        let micFormat = node.outputFormat(forBus: 0)
-        // Mid-switch devices report an empty format; installing a tap on it would abort.
-        guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else { throw EngineError.noMicrophone }
         let converter = FormatConverter()
-        // format: nil taps in the node's current format, so it can never mismatch.
-        node.installTap(onBus: 0, bufferSize: 1024, format: nil) { buf, _ in
+        let tap: AVAudioNodeTapBlock = { buf, _ in
             cb.levelSink(buf)
             if let out = converter.convert(buf) { cont.yield(AnalyzerInput(buffer: out)) }
         }
-        audio.prepare()
-        try audio.start()
-        self.audio = audio
-        configObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main
-        ) { _ in
-            MainActor.assumeIsolated { cb.interrupted() }
-        }
+        let micFormat = try startCapture(tap: tap, onLost: cb.interrupted)
 
         let locale = Pref.locale
         sessionTask = Task { [weak self] in
@@ -176,6 +163,39 @@ final class DictationEngine {
         input = nil
         finishSignal = nil
         sessionTask = nil
+    }
+
+    /// Starts a fresh engine feeding `tap`. When the input device changes mid-session
+    /// (AirPods switching into their microphone mode fires this right after start),
+    /// capture restarts on the new device and keeps feeding the same analyzer input;
+    /// `onLost` runs only if no microphone is available any more.
+    @discardableResult
+    private func startCapture(tap: @escaping AVAudioNodeTapBlock, onLost: @escaping () -> Void) throws -> AVAudioFormat {
+        stopAudio()
+        let audio = AVAudioEngine()
+        let node = audio.inputNode
+        let micFormat = node.outputFormat(forBus: 0)
+        // Mid-switch devices report an empty format; installing a tap on it would abort.
+        guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else { throw EngineError.noMicrophone }
+        // format: nil taps in the node's current format, so it can never mismatch.
+        node.installTap(onBus: 0, bufferSize: 1024, format: nil, block: tap)
+        audio.prepare()
+        try audio.start()
+        self.audio = audio
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.input != nil else { return }   // session already over
+                do {
+                    try self.startCapture(tap: tap, onLost: onLost)
+                } catch {
+                    NSLog("HoTty: microphone lost after device change: \(error)")
+                    onLost()
+                }
+            }
+        }
+        return micFormat
     }
 
     private func stopAudio() {

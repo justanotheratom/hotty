@@ -146,6 +146,22 @@ enum AX {
         attr(el, kAXSelectedTextAttribute) ?? ""
     }
 
+    /// True if `a` and `b` are the same element or one contains the other (within a few
+    /// levels). Web views sometimes report the editable root on one side and an inner
+    /// element on the other.
+    static func isSameOrRelated(_ a: AXUIElement, _ b: AXUIElement) -> Bool {
+        func contains(_ outer: AXUIElement, _ inner: AXUIElement) -> Bool {
+            var el: AXUIElement? = inner
+            for _ in 0..<5 {
+                guard let e = el else { return false }
+                if CFEqual(e, outer) { return true }
+                el = element(e, kAXParentAttribute)
+            }
+            return false
+        }
+        return contains(a, b) || contains(b, a)
+    }
+
     static var focusedElement: AXUIElement? {
         AXUIElementSetMessagingTimeout(systemWide, 0.25)
         return element(systemWide, kAXFocusedUIElementAttribute)

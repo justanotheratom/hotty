@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.ensureModel()
         if ProcessInfo.processInfo.environment["HOTTY_OVERLAY_DEMO"] != nil { coordinator.demoOverlay() }
         if ProcessInfo.processInfo.environment["HOTTY_AUDIO_TEST"] != nil { coordinator.audioSelfTest() }
+        if ProcessInfo.processInfo.environment["HOTTY_LOCK_TEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.coordinator.lockSelfTest() }
+        }
         if ProcessInfo.processInfo.environment["HOTTY_GESTURE_TEST"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.coordinator.gestureSelfTest() }
         }
