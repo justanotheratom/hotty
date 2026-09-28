@@ -28,9 +28,16 @@ final class TouchHoldTrigger: @unchecked Sendable {
         didSet { if Self.debug, "\(oldValue)" != "\(state)" { NSLog("HoTty touch state → %@", "\(state)") } }
     }
     private var clickSeen = false
+    /// The pad the current gesture is on. Frames from other pads are ignored until every
+    /// finger lifts, so an idle built-in trackpad can't end a hold on a Magic Trackpad.
+    private var owner: UnsafeMutableRawPointer?
 
-    private var devices: [UnsafeMutableRawPointer] = []
+    // Main-thread state. Device objects are retained here; keyed by device ID so a
+    // rescan (which returns fresh objects) doesn't register the same pad twice.
+    private var devices: [UInt64: AnyObject] = [:]
     private var clickMonitor: Any?
+    private var rescanTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
 
     private static let moveTolerance: Float = 0.015   // fraction of pad size
     private static let thumbZone: Float = 0.15         // bottom fraction of the pad
@@ -46,16 +53,22 @@ final class TouchHoldTrigger: @unchecked Sendable {
     static var isSupported: Bool { MT.api != nil }
 
     func start() -> Bool {
-        guard let api = MT.api, devices.isEmpty else { return !devices.isEmpty }
-        let list = api.createList().takeRetainedValue() as NSArray
-        for case let dev as AnyObject in list {
-            let ref = Unmanaged.passUnretained(dev).toOpaque()
-            api.register(ref, touchCallback)
-            api.start(ref, 0)
-            devices.append(ref)
-        }
-        guard !devices.isEmpty else { return false }
+        guard MT.api != nil else { return false }
+        guard Self.active == nil else { return Self.active === self }
         Self.active = self
+        refreshDevices()
+
+        // Trackpads come and go (Bluetooth Magic Trackpad, sleep): rescan periodically,
+        // and after wake re-register everything, since devices stop sending frames.
+        rescanTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            self?.refreshDevices()
+        }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.unregisterAll()
+            self?.refreshDevices()
+        }
 
         // Any physical click during a touch means the user is clicking, not dictating.
         // HoTty's own caret-placing click is tagged and ignored.
@@ -67,16 +80,53 @@ final class TouchHoldTrigger: @unchecked Sendable {
     }
 
     func stop() {
-        guard let api = MT.api else { return }
-        for dev in devices {
-            api.unregister(dev, touchCallback)
-            api.stop(dev)
-        }
-        devices.removeAll()
+        rescanTimer?.invalidate()
+        rescanTimer = nil
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
+        unregisterAll()
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         clickMonitor = nil
         if Self.active === self { Self.active = nil }
-        lock.withLock { state = .idle }
+        lock.withLock { state = .idle; owner = nil }
+    }
+
+    /// Registers pads that appeared since the last scan and forgets ones that are gone.
+    private func refreshDevices() {
+        guard let api = MT.api else { return }
+        let list = api.createList().takeRetainedValue() as NSArray
+        var present = Set<UInt64>()
+        for case let dev as AnyObject in list {
+            let ref = Unmanaged.passUnretained(dev).toOpaque()
+            let id = api.deviceID(ref)
+            present.insert(id)
+            guard devices[id] == nil else { continue }
+            api.register(ref, touchCallback)
+            api.start(ref, 0)
+            devices[id] = dev
+            if Self.debug { NSLog("HoTty touch: registered pad %llu (built-in: %d)", id, api.isBuiltIn(ref) ? 1 : 0) }
+        }
+        for id in devices.keys where !present.contains(id) {
+            // Disconnected: the framework already stopped it; just drop our reference.
+            devices[id] = nil
+            if Self.debug { NSLog("HoTty touch: pad %llu disconnected", id) }
+        }
+        lock.withLock {
+            if let o = owner, !devices.values.contains(where: { Unmanaged.passUnretained($0).toOpaque() == o }) {
+                owner = nil
+                state = .idle
+            }
+        }
+    }
+
+    private func unregisterAll() {
+        guard let api = MT.api else { return }
+        for dev in devices.values {
+            let ref = Unmanaged.passUnretained(dev).toOpaque()
+            api.unregister(ref, touchCallback)
+            api.stop(ref)
+        }
+        devices.removeAll()
     }
 
     // MARK: - Frames (multitouch thread)
@@ -84,12 +134,16 @@ final class TouchHoldTrigger: @unchecked Sendable {
     /// Set HOTTY_DEBUG_TOUCH=1 to log raw contacts (state, position) for diagnosis.
     private static let debug = ProcessInfo.processInfo.environment["HOTTY_DEBUG_TOUCH"] != nil
 
-    fileprivate func frame(_ touches: [MT.Touch], time: Double) {
+    fileprivate func frame(_ touches: [MT.Touch], device: UnsafeMutableRawPointer?, time: Double) {
         if Self.debug, !touches.isEmpty {
-            NSLog("HoTty touch: %@", touches.map { "id=\($0.id) state=\($0.state) x=\($0.x) y=\($0.y)" }.joined(separator: " | "))
+            NSLog("HoTty touch [%@]: %@", "\(device.map { UInt(bitPattern: $0) } ?? 0)",
+                  touches.map { "id=\($0.id) state=\($0.state) x=\($0.x) y=\($0.y)" }.joined(separator: " | "))
         }
         lock.lock()
         let touching = touches.filter(\.isTouching)
+        // Follow one pad per gesture: adopt the pad a finger lands on, ignore the rest.
+        if owner == nil, !touching.isEmpty { owner = device }
+        guard owner == nil || owner == device else { lock.unlock(); return }
         let click = clickSeen
         clickSeen = false
 
@@ -146,18 +200,19 @@ final class TouchHoldTrigger: @unchecked Sendable {
         case .blocked:
             if touching.isEmpty { state = .idle }
         }
+        if case .idle = state, touching.isEmpty { owner = nil }
         lock.unlock()
         if let event { DispatchQueue.main.async { MainActor.assumeIsolated { event() } } }
     }
 }
 
-private let touchCallback: MT.Callback = { _, data, count, timestamp, _ in
+private let touchCallback: MT.Callback = { device, data, count, timestamp, _ in
     guard let trigger = TouchHoldTrigger.active else { return 0 }
     var touches: [MT.Touch] = []
     if let data, count > 0 {
         for i in 0..<Int(count) { touches.append(MT.Touch(data + i * MT.Touch.stride)) }
     }
-    trigger.frame(touches, time: timestamp)
+    trigger.frame(touches, device: device, time: timestamp)
     return 0
 }
 
@@ -171,6 +226,15 @@ private enum MT {
         let unregister: @convention(c) (UnsafeMutableRawPointer, Callback) -> Void
         let start: @convention(c) (UnsafeMutableRawPointer, Int32) -> Void
         let stop: @convention(c) (UnsafeMutableRawPointer) -> Void
+        let getDeviceID: @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt64>) -> Int32
+        let builtIn: (@convention(c) (UnsafeMutableRawPointer) -> Bool)?
+
+        func deviceID(_ d: UnsafeMutableRawPointer) -> UInt64 {
+            var id: UInt64 = 0
+            _ = getDeviceID(d, &id)
+            return id
+        }
+        func isBuiltIn(_ d: UnsafeMutableRawPointer) -> Bool { builtIn?(d) ?? false }
     }
 
     static let api: API? = {
@@ -183,9 +247,12 @@ private enum MT {
               let register = sym("MTRegisterContactFrameCallback", (@convention(c) (UnsafeMutableRawPointer, Callback) -> Void).self),
               let unregister = sym("MTUnregisterContactFrameCallback", (@convention(c) (UnsafeMutableRawPointer, Callback) -> Void).self),
               let start = sym("MTDeviceStart", (@convention(c) (UnsafeMutableRawPointer, Int32) -> Void).self),
-              let stop = sym("MTDeviceStop", (@convention(c) (UnsafeMutableRawPointer) -> Void).self)
+              let stop = sym("MTDeviceStop", (@convention(c) (UnsafeMutableRawPointer) -> Void).self),
+              let getDeviceID = sym("MTDeviceGetDeviceID", (@convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt64>) -> Int32).self)
         else { return nil }
-        return API(createList: createList, register: register, unregister: unregister, start: start, stop: stop)
+        let builtIn = sym("MTDeviceIsBuiltIn", (@convention(c) (UnsafeMutableRawPointer) -> Bool).self)
+        return API(createList: createList, register: register, unregister: unregister, start: start, stop: stop,
+                   getDeviceID: getDeviceID, builtIn: builtIn)
     }()
 
     /// One contact, read from the framework's 96-byte MTTouch record by offset:
