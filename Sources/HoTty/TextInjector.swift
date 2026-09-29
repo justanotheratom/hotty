@@ -192,10 +192,11 @@ final class TextInjector {
     /// Adds a leading space when joining onto existing text, and lowercases the first
     /// word when continuing mid-sentence (the recognizer capitalizes every segment).
     private func decorate(_ raw: String) -> String {
-        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Keep line breaks: they come from replacements such as "new line".
+        var s = raw.trimmingCharacters(in: .whitespaces)
         guard let first = s.first, let ctx = context else { return s }
 
-        if let prev = ctx.last, !prev.isWhitespace, !Self.noSpaceBefore.contains(first) {
+        if let prev = ctx.last, !prev.isWhitespace, !first.isNewline, !Self.noSpaceBefore.contains(first) {
             s = " " + s
         }
         let lastSolid = ctx.last { $0 != " " && $0 != "\t" }
@@ -242,6 +243,13 @@ final class TextInjector {
             usleep(3000)   // Electron and web views drop input that arrives too fast
         }
         for ch in s {
+            // A line break is ⇧Return: a new line in documents, and no accidental send in chats.
+            if ch.isNewline {
+                send()
+                key(36, down: true, flags: .maskShift); key(36, down: false, flags: .maskShift)
+                usleep(3000)
+                continue
+            }
             let units = Array(String(ch).utf16)
             if chunk.count + units.count > 16 { send() }
             chunk += units

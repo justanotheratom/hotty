@@ -1,4 +1,6 @@
+import AudioToolbox
 import AVFoundation
+import CoreAudio
 import Speech
 
 /// One hold = one session: microphone → format conversion → SpeechAnalyzer.
@@ -38,7 +40,18 @@ final class DictationEngine {
 
     /// Asset status for the current locale, for the settings window.
     private(set) var modelStatus = "Checking…"
+    private(set) var model = ModelState.checking
     var onStatusChange: (() -> Void)?
+
+    enum ModelState: Equatable {
+        case checking
+        case downloading(Double)   // 0…1
+        case ready
+        case failed(String)
+    }
+
+    /// Custom words, sent to the model as context so it favours these spellings.
+    var contextualWords: () -> [String] = { [] }
 
     // MARK: - Modules
 
@@ -60,21 +73,38 @@ final class DictationEngine {
 
     /// Downloads the on-device model for the chosen locale if needed.
     func ensureModel() async {
-        setStatus("Checking…")
+        ensureGeneration += 1
+        let gen = ensureGeneration
+        setStatus("Checking…", .checking)
         do {
             let module = try await makeModule(for: Pref.locale)
             if let req = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-                setStatus("Downloading speech model…")
+                setStatus("Downloading speech model…", .downloading(0))
+                let progress = req.progress
+                let poll = Task { @MainActor [weak self] in
+                    while !Task.isCancelled {
+                        guard let self, gen == self.ensureGeneration else { return }
+                        let f = min(max(progress.fractionCompleted, 0), 1)
+                        self.setStatus("Downloading speech model · \(Int(f * 100))%", .downloading(f))
+                        try? await Task.sleep(for: .milliseconds(250))
+                    }
+                }
+                defer { poll.cancel() }
                 try await req.downloadAndInstall()
             }
-            setStatus("Ready (\(Pref.locale.identifier))")
+            guard gen == ensureGeneration else { return }
+            setStatus("Ready (\(Pref.locale.identifier))", .ready)
         } catch {
-            setStatus("Error: \(error.localizedDescription)")
+            guard gen == ensureGeneration else { return }
+            setStatus("Error: \(error.localizedDescription)", .failed(error.localizedDescription))
         }
     }
 
-    private func setStatus(_ s: String) {
+    private var ensureGeneration = 0
+
+    private func setStatus(_ s: String, _ m: ModelState) {
         modelStatus = s
+        model = m
         onStatusChange?()
     }
 
@@ -103,6 +133,7 @@ final class DictationEngine {
         let micFormat = try startCapture(tap: tap, onLost: cb.interrupted)
 
         let locale = Pref.locale
+        let words = contextualWords()
         sessionTask = Task { [weak self] in
             do {
                 guard let module = try await self?.makeModule(for: locale) else { return }
@@ -111,6 +142,11 @@ final class DictationEngine {
                 converter.target = fmt
 
                 let analyzer = SpeechAnalyzer(modules: [module], options: Self.analyzerOptions)
+                if !words.isEmpty {
+                    let context = AnalysisContext()
+                    context.contextualStrings[.general] = words
+                    try? await analyzer.setContext(context)
+                }
                 try await analyzer.prepareToAnalyze(in: fmt)
                 try await analyzer.start(inputSequence: stream)
                 async let consumed: Void = Self.consume(module, cb)
@@ -174,6 +210,7 @@ final class DictationEngine {
         stopAudio()
         let audio = AVAudioEngine()
         let node = audio.inputNode
+        Microphones.select(Pref.micUID, on: node)
         let micFormat = node.outputFormat(forBus: 0)
         // Mid-switch devices report an empty format; installing a tap on it would abort.
         guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else { throw EngineError.noMicrophone }
@@ -281,5 +318,49 @@ private final class FormatConverter: @unchecked Sendable {
         }
         out.frameLength = total
         return out
+    }
+}
+
+/// Audio input devices, and picking one for a session.
+enum Microphones {
+    struct Device: Identifiable, Hashable {
+        let id: String      // Core Audio UID
+        let name: String
+    }
+
+    static func all() -> [Device] {
+        AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone], mediaType: .audio, position: .unspecified)
+            .devices.map { Device(id: $0.uniqueID, name: $0.localizedName) }
+    }
+
+    /// The device a session would use right now.
+    static func currentName() -> String {
+        let uid = Pref.micUID
+        if !uid.isEmpty, let d = all().first(where: { $0.id == uid }) { return d.name }
+        return AVCaptureDevice.default(for: .audio)?.localizedName ?? "No microphone"
+    }
+
+    /// Points the engine's input at the chosen device. An unplugged or unknown device
+    /// leaves the system default in place.
+    static func select(_ uid: String, on node: AVAudioInputNode) {
+        guard !uid.isEmpty, let id = deviceID(forUID: uid), let unit = node.audioUnit else { return }
+        var dev = id
+        let err = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                       &dev, UInt32(MemoryLayout<AudioDeviceID>.size))
+        if err != noErr { NSLog("HoTty: couldn't select microphone %@: %d", uid, err) }
+    }
+
+    private static func deviceID(forUID uid: String) -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var cfUID = uid as CFString
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let err = withUnsafeMutablePointer(to: &cfUID) { p in
+            AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr,
+                                       UInt32(MemoryLayout<CFString>.size), p, &size, &id)
+        }
+        return err == noErr && id != 0 ? id : nil
     }
 }

@@ -10,15 +10,11 @@ struct HoTtyApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(state: appDelegate.coordinator.state)
+            MenuContent(coordinator: appDelegate.coordinator, windows: appDelegate.windows)
         } label: {
-            Image(systemName: appDelegate.coordinator.state.listening ? "waveform.circle.fill" : "waveform")
+            MenuIcon(coordinator: appDelegate.coordinator)
         }
         .menuBarExtraStyle(.menu)
-
-        Settings {
-            SettingsView(coordinator: appDelegate.coordinator)
-        }
     }
 }
 
@@ -31,17 +27,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastTrigger = Pref.trigger
     private var lastLocale = Pref.locale.identifier
     private var permissionTimer: Timer?
+    lazy var windows = Windows(coordinator: coordinator)
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        if !AX.isTrusted { AX.promptForTrust() }
-        Task {
-            _ = await AVCaptureDevice.requestAccess(for: .audio)
-            coordinator.refreshPermissions()
+        if !UserDefaults.standard.bool(forKey: Pref.onboarded) {
+            // Onboarding asks for each permission with an explanation first.
+            windows.showOnboarding()
+        } else {
+            if !AX.isTrusted { AX.promptForTrust() }
+            Task {
+                _ = await AVCaptureDevice.requestAccess(for: .audio)
+                coordinator.refreshPermissions()
+            }
+            SFSpeechRecognizer.requestAuthorization { _ in
+                DispatchQueue.main.async { self.coordinator.refreshPermissions() }
+            }
         }
-        SFSpeechRecognizer.requestAuthorization { _ in }
 
         coordinator.applyTrigger()
         coordinator.ensureModel()
+        if ProcessInfo.processInfo.environment["HOTTY_DEBUG_NAV"] != nil {
+            // Screenshots: `notifyutil`-free page switching, e.g. object "settings/general".
+            DistributedNotificationCenter.default().addObserver(forName: .init("llc.fungee.hotty.debug.page"), object: nil, queue: .main) { [weak self] n in
+                let parts = (n.object as? String ?? "").split(separator: "/").map(String.init)
+                MainActor.assumeIsolated {
+                    let tab: SettingsTab? = switch parts.dropFirst().first {
+                    case "general": .general
+                    case "permissions": .permissions
+                    case "dictation": .dictation
+                    default: nil
+                    }
+                    self?.windows.showMain(parts.first.flatMap(Page.init(rawValue:)), tab: tab)
+                }
+            }
+        }
         if ProcessInfo.processInfo.environment["HOTTY_OVERLAY_DEMO"] != nil { coordinator.demoOverlay() }
         if ProcessInfo.processInfo.environment["HOTTY_AUDIO_TEST"] != nil { coordinator.audioSelfTest() }
         if ProcessInfo.processInfo.environment["HOTTY_LOCK_TEST"] != nil {
@@ -82,6 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        windows.showMain()
+        return false
+    }
+
     private func preferencesChanged() {
         if Pref.trigger != lastTrigger {
             lastTrigger = Pref.trigger
@@ -96,139 +120,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Menu
 
+private struct MenuIcon: View {
+    let coordinator: Coordinator
+
+    var body: some View {
+        let s = coordinator.state
+        Image(systemName: s.listening ? "waveform.circle.fill"
+              : coordinator.store.isPaused ? "pause.circle" : "waveform")
+    }
+}
+
 private struct MenuContent: View {
-    let state: AppState
+    let coordinator: Coordinator
+    let windows: Windows
     @AppStorage(Pref.triggerMode) private var trigger = TriggerMode.clickHold.rawValue
     @AppStorage(Pref.liveMode) private var live = LiveMode.overlay.rawValue
 
+    private var state: AppState { coordinator.state }
+    private var store: Store { coordinator.store }
+
     var body: some View {
-        Text(statusLine)
+        Text(title)
+        Text(subtitle)
         Divider()
-        Picker("Trigger", selection: $trigger) {
+        Button("Open HoTty") { windows.showMain() }
+            .keyboardShortcut("o")
+        if store.isPaused {
+            Button("Resume dictation") { coordinator.resume() }
+        } else {
+            Button("Pause for 1 hour") { coordinator.pause() }
+        }
+        Divider()
+        Picker("Start dictation by", selection: $trigger) {
             ForEach(TriggerMode.allCases) { Text($0.title).tag($0.rawValue) }
         }
-        Picker("Live Text", selection: $live) {
+        Picker("While speaking", selection: $live) {
             ForEach(LiveMode.allCases) { Text($0.title).tag($0.rawValue) }
         }
         Divider()
-        SettingsLink { Text("Settings…") }
+        Button("Copy last dictation") { coordinator.copyLast() }
+            .keyboardShortcut("c", modifiers: [.option, .command])
+            .disabled(store.last == nil)
+        Button("Gesture guide") { windows.showMain(.guide) }
+        Button("Settings…") { windows.showMain(.settings) }
             .keyboardShortcut(",")
+        Divider()
         Button("Quit HoTty") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 
-    private var statusLine: String {
+    private var title: String {
         if state.listening { return "Listening…" }
-        if !state.accessibilityGranted { return "Needs Accessibility permission" }
-        if state.microphone != .authorized { return "Needs Microphone permission" }
+        if !state.accessibilityGranted { return "Needs Accessibility access" }
+        if state.microphone != .authorized { return "Needs Microphone access" }
+        if store.isPaused, let until = store.pausedUntil {
+            return "Paused until \(until.formatted(date: .omitted, time: .shortened))"
+        }
+        if state.triggerError != nil { return "Hold detection is off" }
+        if case .downloading(let f) = state.model { return "Downloading speech model · \(Int(f * 100))%" }
+        return "Ready"
+    }
+
+    private var subtitle: String {
+        if !state.accessibilityGranted || state.microphone != .authorized { return "Open HoTty to fix it" }
+        if store.isPaused { return "Holding won't start dictation" }
         if let e = state.triggerError { return e }
-        return "HoTty is ready"
-    }
-}
-
-// MARK: - Settings
-
-private struct SettingsView: View {
-    let coordinator: Coordinator
-    private var state: AppState { coordinator.state }
-
-    @AppStorage(Pref.triggerMode) private var trigger = TriggerMode.clickHold.rawValue
-    @AppStorage(Pref.liveMode) private var live = LiveMode.overlay.rawValue
-    @AppStorage(Pref.caretPlacement) private var caret = CaretPlacement.atPointer.rawValue
-    @AppStorage(Pref.holdDuration) private var hold = 0.4
-    @AppStorage(Pref.localeID) private var localeID = ""
-    @AppStorage(Pref.playSounds) private var sounds = true
-    @AppStorage(Pref.ignoreThumbZone) private var thumbZone = true
-    @State private var locales: [Locale] = []
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-
-    var body: some View {
-        Form {
-            Section("Trigger") {
-                Picker("Hold gesture", selection: $trigger) {
-                    ForEach(TriggerMode.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                .pickerStyle(.radioGroup)
-                LabeledContent("Hold for") {
-                    HStack {
-                        Slider(value: $hold, in: Pref.holdDurationRange, step: 0.05)
-                        Text(String(format: "%.2f s", hold))
-                            .monospacedDigit()
-                            .frame(width: 52, alignment: .trailing)
-                    }
-                }
-                if trigger == TriggerMode.touchHold.rawValue {
-                    Toggle("Ignore touches along the bottom edge (resting thumb)", isOn: $thumbZone)
-                    Text("Uses a private macOS framework. Place a finger and keep it still; moving first, a second finger, or clicking won't trigger.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if let err = state.triggerError {
-                    Text(err).font(.caption).foregroundStyle(.red)
-                }
-            }
-
-            Section("Live text") {
-                Picker("While speaking", selection: $live) {
-                    ForEach(LiveMode.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                .pickerStyle(.radioGroup)
-                Picker("Without a selection", selection: $caret) {
-                    ForEach(CaretPlacement.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                Text("Holding on selected text always replaces that selection.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("Speech") {
-                Picker("Language", selection: $localeID) {
-                    Text("System (\(Locale.current.identifier))").tag("")
-                    ForEach(locales, id: \.identifier) { l in
-                        Text(Locale.current.localizedString(forIdentifier: l.identifier) ?? l.identifier).tag(l.identifier)
-                    }
-                }
-                LabeledContent("On-device model") {
-                    HStack {
-                        Text(state.modelStatus).foregroundStyle(.secondary)
-                        Button("Retry") { coordinator.ensureModel() }
-                            .controlSize(.small)
-                            .opacity(state.modelStatus.hasPrefix("Error") ? 1 : 0)
-                    }
-                }
-                Toggle("Play start and stop sounds", isOn: $sounds)
-            }
-
-            Section("Permissions") {
-                permissionRow("Accessibility", granted: state.accessibilityGranted,
-                              url: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-                permissionRow("Microphone", granted: state.microphone == .authorized,
-                              url: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, on in
-                        do { on ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() }
-                        catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
-                    }
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 500)
-        .fixedSize(horizontal: false, vertical: true)
-        .task {
-            let all = await DictationEngine.supportedLocales()
-            locales = all.sorted { $0.identifier < $1.identifier }
-        }
-        .onAppear {
-            coordinator.refreshPermissions()
-            NSApp.activate()
-        }
-    }
-
-    private func permissionRow(_ name: String, granted: Bool, url: String) -> some View {
-        LabeledContent(name) {
-            if granted {
-                Label("Granted", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-            } else {
-                Button("Open System Settings") { NSWorkspace.shared.open(URL(string: url)!) }
-            }
-        }
+        return trigger == TriggerMode.touchHold.rawValue
+            ? "Rest a finger in a text field to speak" : "Press and hold in a text field to speak"
     }
 }

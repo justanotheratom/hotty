@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Speech
 
 /// Observable status for the menu bar and settings window.
 @MainActor @Observable
@@ -7,8 +8,14 @@ final class AppState {
     var listening = false
     var accessibilityGranted = AX.isTrusted
     var microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+    var speech = SFSpeechRecognizer.authorizationStatus()
     var modelStatus = "Checking…"
+    var model = DictationEngine.ModelState.checking
     var triggerError: String?
+    var micName = Microphones.currentName()
+
+    /// Something stops dictation from working at all.
+    var needsAttention: Bool { !accessibilityGranted || microphone != .authorized }
 }
 
 /// Owns the active trigger and runs each dictation session:
@@ -22,12 +29,13 @@ final class Coordinator: HoldDelegate {
     private let engine = DictationEngine()
     private let injector = TextInjector()
     private let overlay = OverlayController()
+    let store = Store.shared
 
     private var click: ClickHoldTrigger?
     private var touch: TouchHoldTrigger?
     private var activeTrigger: TriggerMode?
 
-    private enum Phase { case idle, listening, locked, finishing }
+    private enum Phase { case idle, listening, locked, finishing, practice }
     private var phase = Phase.idle
     private var session = 0
     private var live = LiveMode.overlay
@@ -35,6 +43,12 @@ final class Coordinator: HoldDelegate {
     private var anchor = CGPoint.zero   // where the hold began; release gestures are measured from here
     private var action = ReleaseAction.finish
     private var focusPoll: Timer?       // hands-free: resumes typing when the field regains focus
+    private var pauseTimer: Timer?
+
+    // What the current session typed, for History.
+    private var sessionText = ""
+    private var sessionStart = Date()
+    private var sessionApp: NSRunningApplication?
 
     /// How far (points) the pointer must travel for a release gesture.
     private static let gestureDistance: CGFloat = 60
@@ -45,7 +59,9 @@ final class Coordinator: HoldDelegate {
         engine.onStatusChange = { [weak self] in
             guard let self else { return }
             self.state.modelStatus = self.engine.modelStatus
+            self.state.model = self.engine.model
         }
+        engine.contextualWords = { Store.shared.words }
         overlay.onButton = { [weak self] action in self?.lockedButton(action) }
     }
 
@@ -54,11 +70,26 @@ final class Coordinator: HoldDelegate {
     func refreshPermissions() {
         state.accessibilityGranted = AX.isTrusted
         state.microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+        state.speech = SFSpeechRecognizer.authorizationStatus()
+        let mic = Microphones.currentName()
+        if state.micName != mic { state.micName = mic }
     }
 
     /// Starts the trigger chosen in settings, stopping the other one.
     func applyTrigger() {
         let mode = Pref.trigger
+        pauseTimer?.invalidate()
+        if store.isPaused, let until = store.pausedUntil {
+            // Paused: no trigger at all, so presses reach apps without any delay.
+            click?.stop(); click = nil
+            touch?.stop(); touch = nil
+            activeTrigger = nil
+            state.triggerError = nil
+            pauseTimer = Timer.scheduledTimer(withTimeInterval: max(1, until.timeIntervalSinceNow), repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resume() }
+            }
+            return
+        }
         guard mode != activeTrigger || state.triggerError != nil else { return }
         click?.stop(); click = nil
         touch?.stop(); touch = nil
@@ -83,9 +114,33 @@ final class Coordinator: HoldDelegate {
 
     func ensureModel() { Task { await engine.ensureModel() } }
 
+    // MARK: - Pause
+
+    func pause(for seconds: TimeInterval = 3600) {
+        store.pause(for: seconds)
+        applyTrigger()
+    }
+
+    func resume() {
+        store.resume()
+        applyTrigger()
+    }
+
+    /// Puts the most recent dictation on the clipboard.
+    func copyLast() {
+        guard let d = store.last else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(d.text, forType: .string)
+    }
+
     // MARK: - HoldDelegate
 
     func holdBegan(at p: CGPoint, placeCaret: Bool) -> Bool {
+        guard !store.isPaused else { return false }
+        if phase == .idle, case .downloading(let f) = state.model {
+            overlay.notice("Speech model downloading · \(Int(f * 100))%", at: p, progress: f)
+            return false
+        }
         guard phase == .idle, state.microphone == .authorized,
               let target = AX.editableElement(at: p) else {
             NSLog("HoTty hold rejected at %@: phase=%@ mic=%d editable=%d", "\(p)", "\(phase)",
@@ -107,6 +162,9 @@ final class Coordinator: HoldDelegate {
 
         session += 1
         let id = session
+        sessionText = ""
+        sessionStart = Date()
+        sessionApp = NSWorkspace.shared.frontmostApplication
         live = Pref.live
         pendingVolatile = ""
         anchor = p
@@ -125,6 +183,9 @@ final class Coordinator: HoldDelegate {
             try engine.start(cb)
         } catch {
             NSLog("HoTty: couldn't start audio: \(error)")
+            if case DictationEngine.EngineError.noMicrophone = error {
+                overlay.notice("No microphone. Plug one in or pick another in Settings.", at: p)
+            }
             return false
         }
 
@@ -181,6 +242,7 @@ final class Coordinator: HoldDelegate {
     /// holds pass through as clicks while `flags.busy`), and only the overlay buttons end it.
     private func lock() {
         phase = .locked
+        store.markDone(.free)
         flags.cancellable = false
         // In-progress words move to the overlay: typing and backspacing them live could
         // land in another app the moment focus moves. Final phrases are still typed.
@@ -215,6 +277,7 @@ final class Coordinator: HoldDelegate {
             NSLog("HoTty session: finish(pressReturn: %d) from phase %@", pressReturn ? 1 : 0, "\(phase)")
         }
         let wasLocked = phase == .locked
+        let spoke = Date().timeIntervalSince(sessionStart)
         phase = .finishing
         stopFocusPoll()
         overlay.finishing()
@@ -229,9 +292,13 @@ final class Coordinator: HoldDelegate {
             await engine.finish()
             guard id == session else { return }
             // Anything the recognizer never finalized still gets typed.
-            if !pendingVolatile.isEmpty { injector.commit(pendingVolatile) }
+            if !pendingVolatile.isEmpty {
+                injector.commit(pendingVolatile)
+                appendSession(pendingVolatile)
+            }
             pendingVolatile = ""
             injector.finish(pressReturn: pressReturn) { leftover in
+                self.recordSession(sent: pressReturn && leftover == nil, seconds: spoke)
                 guard let leftover else { return self.endSession(id) }
                 // The field never came back (closed, navigated away): don't lose the words.
                 NSPasteboard.general.clearContents()
@@ -259,8 +326,9 @@ final class Coordinator: HoldDelegate {
 
     // MARK: - Results
 
-    private func onVolatile(_ s: String, session id: Int) {
-        guard id == session, phase != .idle else { return }
+    private func onVolatile(_ raw: String, session id: Int) {
+        guard id == session, phase != .idle, phase != .practice else { return }
+        let s = store.transform(raw)
         flags.cancellable = false
         pendingVolatile = s
         switch live {
@@ -269,12 +337,96 @@ final class Coordinator: HoldDelegate {
         }
     }
 
-    private func onFinal(_ s: String, session id: Int) {
-        guard id == session, phase != .idle else { return }
+    private func onFinal(_ raw: String, session id: Int) {
+        guard id == session, phase != .idle, phase != .practice else { return }
+        let s = store.transform(raw)
         flags.cancellable = false
         pendingVolatile = ""
         injector.commit(s)
+        appendSession(s)
         if live == .overlay { overlay.setText("") }
+    }
+
+    private func appendSession(_ s: String) {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        if sessionText.isEmpty || t.first.map({ ".,!?;:".contains($0) || $0.isNewline }) == true || sessionText.last?.isNewline == true {
+            sessionText += t
+        } else {
+            sessionText += " " + t
+        }
+    }
+
+    private func recordSession(sent: Bool, seconds: TimeInterval) {
+        let text = sessionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        sessionText = ""
+        guard !text.isEmpty else { return }
+        if sent { store.markDone(.send) }
+        store.record(Dictation(date: sessionStart, app: sessionApp?.localizedName ?? "Unknown app",
+                               bundleID: sessionApp?.bundleIdentifier, text: text, sent: sent, seconds: seconds))
+    }
+
+    // MARK: - Practice (onboarding)
+
+    /// Dictation into the onboarding practice box: real speech recognition, but nothing
+    /// is typed into other apps and nothing is recorded in History.
+    struct PracticeCallbacks {
+        var text: (String) -> Void
+        var level: (Float) -> Void
+    }
+    private var practiceCommitted = ""
+
+    func practiceStart(_ cb: PracticeCallbacks) -> String? {
+        guard phase == .idle else { return "HoTty is busy with another dictation." }
+        guard state.microphone == .authorized else { return "Allow the microphone first (step 2)." }
+        if case .downloading(let f) = state.model { return "The speech model is still downloading (\(Int(f * 100))%)." }
+        session += 1
+        let id = session
+        practiceCommitted = ""
+        let join = { (a: String, b: String) -> String in
+            let b = b.trimmingCharacters(in: .whitespaces)
+            if a.isEmpty || b.isEmpty { return a + b }
+            return ".,!?".contains(b.first!) ? a + b : a + " " + b
+        }
+        let engineCB = DictationEngine.Callbacks(
+            volatile: { [weak self] s in
+                guard let self, self.session == id else { return }
+                cb.text(join(self.practiceCommitted, self.store.transform(s)))
+            },
+            final: { [weak self] s in
+                guard let self, self.session == id else { return }
+                self.practiceCommitted = join(self.practiceCommitted, self.store.transform(s))
+                cb.text(self.practiceCommitted)
+            },
+            level: { l in cb.level(l) },
+            interrupted: {}
+        )
+        do { try engine.start(engineCB) } catch { return error.localizedDescription }
+        phase = .practice
+        flags.busy = true
+        state.listening = true
+        play("Tink")
+        return nil
+    }
+
+    /// Ends practice and returns everything recognized.
+    func practiceFinish(send: Bool) async -> String {
+        guard phase == .practice else { return "" }
+        play(send ? "Glass" : "Pop")
+        await engine.finish()
+        phase = .idle
+        flags.busy = false
+        state.listening = false
+        return practiceCommitted
+    }
+
+    func practiceCancel() {
+        guard phase == .practice else { return }
+        engine.cancel()
+        play("Bottle")
+        phase = .idle
+        flags.busy = false
+        state.listening = false
     }
 
     private func endSession(_ id: Int) {

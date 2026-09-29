@@ -22,6 +22,8 @@ final class OverlayModel {
     var lockedAt = Date()
     var waitingWords = 0          // hands-free: words held while the field lacks focus
     var flash: String?            // brief status that replaces the text, e.g. "Copied to clipboard"
+    var notice = false            // a message shown instead of a session: no meter, no hints
+    var progress: Double?         // with a notice: a progress bar, e.g. the model download
     var boxFrame = CGRect.zero    // the visible box, in hosting-view coordinates (top-left origin)
     var onButton: ((ReleaseAction) -> Void)?
 }
@@ -61,6 +63,9 @@ final class OverlayController {
         model.locked = false
         model.waitingWords = 0
         model.flash = nil
+        model.notice = false
+        model.progress = nil
+        noticeHide?.cancel()
         let panel = self.panel ?? makePanel()
         self.panel = panel
         panel.ignoresMouseEvents = true
@@ -79,6 +84,19 @@ final class OverlayController {
     func setHint(_ on: Bool) { if model.hint != on { model.hint = on } }
     func setWaiting(_ n: Int) { if model.waitingWords != n { model.waitingWords = n } }
     func flash(_ message: String) { model.flash = message }
+
+    /// Shows a short message at `cgPoint` when no session is running, then hides it.
+    func notice(_ text: String, at cgPoint: CGPoint, progress: Double? = nil) {
+        show(at: cgPoint)
+        model.notice = true
+        model.flash = text
+        model.progress = progress
+        model.phase = .finishing
+        let work = DispatchWorkItem { [weak self] in self?.hide() }
+        noticeHide = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
+    }
+    private var noticeHide: DispatchWorkItem?
 
     func finishing() {
         model.phase = .finishing
@@ -213,13 +231,18 @@ struct OverlayView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.indigo)
                 }
-                LevelMeter(level: model.phase == .listening ? model.level : 0, active: model.phase == .listening)
-                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                if !model.notice {
+                    LevelMeter(level: model.phase == .listening ? model.level : 0, active: model.phase == .listening)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                }
                 mainText.font(Font(OverlayController.font))
                 if model.action != .finish {
                     ActionBadge(action: model.action)
                         .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 5 }
                 }
+            }
+            if let p = model.progress {
+                ProgressView(value: p).progressViewStyle(.linear).tint(Theme.send).frame(width: 260)
             }
             if model.locked && model.phase == .listening {
                 lockedControls
@@ -326,7 +349,7 @@ private struct LevelMeter: View {
         HStack(alignment: .center, spacing: 2) {
             ForEach(Self.weights.indices, id: \.self) { i in
                 Capsule()
-                    .fill(active ? Color.red : Color.secondary)
+                    .fill(active ? Theme.send : Color.secondary)
                     .frame(width: 2.5, height: 4 + 10 * CGFloat(level) * Self.weights[i])
             }
         }

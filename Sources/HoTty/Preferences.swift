@@ -26,7 +26,7 @@ enum LiveMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .overlay: "Preview overlay, type final phrases"
+        case .overlay: "Preview overlay"
         case .inline: "Type live into the field"
         }
     }
@@ -58,6 +58,8 @@ enum Pref {
     static let localeID = "localeID"
     static let playSounds = "playSounds"
     static let ignoreThumbZone = "ignoreThumbZone"
+    static let micUIDKey = "microphoneUID"
+    static let onboarded = "onboardingDone"
 
     static let holdDurationRange: ClosedRange<Double> = 0.15...1.5
 
@@ -70,6 +72,8 @@ enum Pref {
             localeID: "",
             playSounds: true,
             ignoreThumbZone: true,
+            micUIDKey: "",
+            onboarded: false,
         ])
     }
 
@@ -81,6 +85,8 @@ enum Pref {
     static var hold: TimeInterval { d.double(forKey: holdDuration).clamped(to: holdDurationRange) }
     static var sounds: Bool { d.bool(forKey: playSounds) }
     static var thumbZone: Bool { d.bool(forKey: ignoreThumbZone) }
+    /// Core Audio UID of the chosen microphone; empty means the system default.
+    static var micUID: String { d.string(forKey: micUIDKey) ?? "" }
     static var locale: Locale {
         let id = d.string(forKey: localeID) ?? ""
         return id.isEmpty ? Locale.current : Locale(identifier: id)
