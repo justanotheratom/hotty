@@ -43,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async { self.coordinator.refreshPermissions() }
             }
         }
+        // Opened from the Dock, Finder or Launchpad: show the window. Started at login: stay quiet
+        // in the menu bar and Dock.
+        if UserDefaults.standard.bool(forKey: Pref.onboarded) && !Self.launchedAtLogin {
+            windows.showMain()
+        }
 
         coordinator.applyTrigger()
         coordinator.ensureModel()
@@ -99,6 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AX.enableManualAccessibility(pid: app.processIdentifier)
             }
         }
+    }
+
+    private static var launchedAtLogin: Bool {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        return event?.eventID == kAEOpenApplication
+            && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

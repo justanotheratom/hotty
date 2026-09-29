@@ -84,8 +84,9 @@ scripts/build.sh --run
 ```
 
 `scripts/build.sh` builds a release binary with SwiftPM, wraps it into
-`build/HoTty.app`, signs it, and (with `--run`) launches it. HoTty lives in the menu bar
-(waveform icon) — there's no Dock icon.
+`build/HoTty.app`, signs it, and (with `--run`) launches it. HoTty shows in the Dock and
+in the menu bar (waveform icon); click either to open it. It can also be built and run
+from Xcode: open `HoTty.xcodeproj` and press ⌘R.
 
 **Code signing.** The script signs with the first *Apple Development* identity in your
 keychain, falling back to ad-hoc signing. Use a real identity if you can: macOS ties the

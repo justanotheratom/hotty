@@ -37,8 +37,8 @@ final class Nav {
     var tab = SettingsTab.dictation
 }
 
-/// Opens and reuses HoTty's two windows: the main window and onboarding. HoTty stays a
-/// menu bar app (no Dock icon), so each window activates the app when it opens.
+/// Opens and reuses HoTty's two windows: the main window and onboarding. HoTty also lives
+/// in the menu bar, so opening a window from there activates the app first.
 @MainActor
 final class Windows: NSObject, NSWindowDelegate {
     let coordinator: Coordinator
