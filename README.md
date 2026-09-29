@@ -232,6 +232,34 @@ open --env HOTTY_DEBUG_TOUCH=1 --stdout /tmp/hotty.log --stderr /tmp/hotty.log b
 The TextEdit tests type real keystrokes, so they refuse to run unless TextEdit is the
 focused app — don't type while they run.
 
+### Releasing
+
+Users install HoTty with `brew install justanotheratom/tap/hotty` and update with
+`brew upgrade hotty`. This repo is private, so the downloads and the cask live in the
+public tap repo (`justanotheratom/homebrew-tap`; override with `TAP_REPO`).
+
+One-time setup:
+
+1. A **Developer ID Application** certificate: Xcode › Settings › Accounts › Manage
+   Certificates › + › Developer ID Application.
+2. An app-specific password from [account.apple.com](https://account.apple.com), saved
+   to the keychain (you'll be prompted for it; don't put it in a script):
+   ```sh
+   xcrun notarytool store-credentials hotty-notary --apple-id <you@example.com> --team-id M383Y43787
+   ```
+3. `gh auth login` with write access to the tap repo.
+
+Then, for each release:
+
+```sh
+./scripts/release.sh 0.2.0            # build, sign, notarize, zip, write the cask; uploads nothing
+./scripts/release.sh 0.2.0 --publish  # the same, then GitHub release + tap update
+```
+
+The script sets the version in `Info.plist` and the Xcode project, builds for Apple
+silicon and Intel, and puts the zip in `dist/`. Commit the version bump afterwards.
+`--no-notarize` makes a local test build signed with your development certificate.
+
 ### Contributing
 
 Work on a branch and open a pull request against `main`. Please test the flows your

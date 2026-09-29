@@ -18,27 +18,70 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A10000000000000000005001 /* Sources/HoTty */ = {isa = PBXFileSystemSynchronizedRootGroup; name = HoTty; path = Sources/HoTty; sourceTree = "<group>"; };
+		A10000000000000000005001 /* HoTty */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = HoTty;
+			path = Sources/HoTty;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		A1000000000000000000P002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A1000000000000000000P002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A1000000000000000000G000 = {isa = PBXGroup; children = (A10000000000000000005001 /* Sources/HoTty */, A1000000000000000000G001 /* Resources */, A1000000000000000000G002 /* Products */); sourceTree = "<group>"; };
-		A1000000000000000000G001 /* Resources */ = {isa = PBXGroup; children = (A1000000000000000000F001 /* AppIcon.icns */, A1000000000000000000F002 /* Info.plist */, A1000000000000000000F003 /* HoTty.entitlements */); path = Resources; sourceTree = "<group>"; };
-		A1000000000000000000G002 /* Products */ = {isa = PBXGroup; children = (A1000000000000000000F000 /* HoTty.app */); name = Products; sourceTree = "<group>"; };
+		A1000000000000000000G000 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000005001 /* HoTty */,
+				A1000000000000000000G001 /* Resources */,
+				A1000000000000000000G002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1000000000000000000G001 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000F001 /* AppIcon.icns */,
+				A1000000000000000000F002 /* Info.plist */,
+				A1000000000000000000F003 /* HoTty.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000G002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000F000 /* HoTty.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		A1000000000000000000T001 /* HoTty */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A1000000000000000000L002 /* Build configuration list for PBXNativeTarget "HoTty" */;
-			buildPhases = (A1000000000000000000P001 /* Sources */, A1000000000000000000P002 /* Frameworks */, A1000000000000000000P003 /* Resources */);
-			buildRules = ();
-			dependencies = ();
-			fileSystemSynchronizedGroups = (A10000000000000000005001 /* Sources/HoTty */);
+			buildPhases = (
+				A1000000000000000000P001 /* Sources */,
+				A1000000000000000000P002 /* Frameworks */,
+				A1000000000000000000P003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000005001 /* HoTty */,
+			);
 			name = HoTty;
 			productName = HoTty;
 			productReference = A1000000000000000000F000 /* HoTty.app */;
@@ -49,27 +92,54 @@
 /* Begin PBXProject section */
 		A1000000000000000000R001 /* Project object */ = {
 			isa = PBXProject;
-			attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {A1000000000000000000T001 = {CreatedOnToolsVersion = 26.0; }; }; };
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A1000000000000000000T001 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
 			buildConfigurationList = A1000000000000000000L001 /* Build configuration list for PBXProject "HoTty" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (en, Base);
+			knownRegions = (
+				en,
+				Base,
+			);
 			mainGroup = A1000000000000000000G000;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A1000000000000000000G002 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (A1000000000000000000T001 /* HoTty */);
+			targets = (
+				A1000000000000000000T001 /* HoTty */,
+			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A1000000000000000000P003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000B001 /* AppIcon.icns in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		A1000000000000000000P003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000B001 /* AppIcon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A1000000000000000000P001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A1000000000000000000P001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -111,7 +181,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = llc.fungee.hotty;
 				PRODUCT_NAME = HoTty;
@@ -129,7 +202,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = llc.fungee.hotty;
 				PRODUCT_NAME = HoTty;
@@ -140,8 +216,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A1000000000000000000L001 /* Build configuration list for PBXProject "HoTty" */ = {isa = XCConfigurationList; buildConfigurations = (A1000000000000000000C001 /* Debug */, A1000000000000000000C002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		A1000000000000000000L002 /* Build configuration list for PBXNativeTarget "HoTty" */ = {isa = XCConfigurationList; buildConfigurations = (A1000000000000000000C003 /* Debug */, A1000000000000000000C004 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A1000000000000000000L001 /* Build configuration list for PBXProject "HoTty" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000C001 /* Debug */,
+				A1000000000000000000C002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1000000000000000000L002 /* Build configuration list for PBXNativeTarget "HoTty" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000C003 /* Debug */,
+				A1000000000000000000C004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 	};
 	rootObject = A1000000000000000000R001 /* Project object */;
