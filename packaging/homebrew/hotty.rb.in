@@ -1,0 +1,22 @@
+# Template for the Homebrew cask. scripts/release.sh fills in the version and checksum,
+# writes packaging/homebrew/hotty.rb and, with --publish, copies it into the tap's Casks/.
+cask "hotty" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/@RELEASE_REPO@/releases/download/v#{version}/HoTty-#{version}.zip"
+  name "HoTty"
+  desc "Hold on any text field, speak, and let go to type"
+  homepage "https://github.com/@RELEASE_REPO@"
+
+  depends_on macos: :tahoe
+
+  app "HoTty.app"
+
+  uninstall quit: "llc.fungee.hotty"
+
+  zap trash: [
+    "~/Library/Application Support/HoTty",
+    "~/Library/Preferences/llc.fungee.hotty.plist",
+  ]
+end

@@ -4,6 +4,7 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleExecutable</key><string>HoTty</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIdentifier</key><string>llc.fungee.hotty</string>
     <key>CFBundleName</key><string>HoTty</string>
     <key>CFBundleDisplayName</key><string>HoTty</string>
@@ -11,7 +12,6 @@
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
-    <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>HoTty listens to your voice while you hold the trackpad, and types what you say.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>HoTty transcribes your speech on-device.</string>
