@@ -75,7 +75,7 @@ final class Windows: NSObject, NSWindowDelegate {
     }
 
     private func makeMain() -> NSWindow {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680),
+        let w = HeaderDragWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         w.title = "HoTty"
@@ -114,6 +114,53 @@ final class Windows: NSObject, NSWindowDelegate {
         if w === onboarding {
             onboarding = nil
             coordinator.practiceCancel()
+        }
+    }
+}
+
+/// The main window draws its own header where a title bar would be, and SwiftUI content
+/// there swallows most clicks, so only a thin strip at the very top moved the window.
+/// This makes the whole header (the top bar, and the sidebar at the same height) move it
+/// from anywhere, and double-click it like a title bar. The header has no clickable
+/// SwiftUI controls; the traffic-light buttons are AppKit controls and keep working.
+final class HeaderDragWindow: NSWindow {
+    static let headerHeight: CGFloat = 54
+    static let sidebarWidth: CGFloat = 224
+    static let sidebarHeaderHeight: CGFloat = 88   // down to the first page row
+    private let debug = ProcessInfo.processInfo.environment["HOTTY_DEBUG_DRAG"] != nil
+
+    override func sendEvent(_ event: NSEvent) {
+        if debug, event.type == .leftMouseDown {
+            let p = event.locationInWindow
+            let hit = contentView?.superview?.hitTest(p)
+            NSLog("drag: click x=%.0f fromTop=%.0f clicks=%d hit=%@ header=%@", p.x,
+                  frame.height - p.y, event.clickCount, hit.map { "\(type(of: $0))" } ?? "nil",
+                  inHeader(p) ? "yes" : "no")
+        }
+        if event.type == .leftMouseDown, inHeader(event.locationInWindow) {
+            if event.clickCount == 2 {
+                titleBarDoubleClick()
+            } else {
+                performDrag(with: event)
+            }
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    private func inHeader(_ p: NSPoint) -> Bool {
+        let height = p.x < Self.sidebarWidth ? Self.sidebarHeaderHeight : Self.headerHeight
+        guard let content = contentView, p.y >= content.frame.height - height else { return false }
+        // The frame view is the root, so hitTest takes window coordinates here.
+        return !(content.superview?.hitTest(p) is NSControl)
+    }
+
+    /// Follows System Settings › Desktop & Dock › "Double-click a window's title bar to".
+    private func titleBarDoubleClick() {
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": performMiniaturize(nil)
+        case "None": break
+        default: performZoom(nil)
         }
     }
 }

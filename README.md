@@ -233,6 +233,7 @@ open --env HOTTY_DEBUG_TOUCH=1 --stdout /tmp/hotty.log --stderr /tmp/hotty.log b
 |---|---|
 | `HOTTY_DEBUG_TOUCH` | Logs raw trackpad contacts, pad registration, and rest-finger state changes |
 | `HOTTY_DEBUG_AX` | Logs the Accessibility role chain under the pointer every second — use it when a text field isn't detected |
+| `HOTTY_DEBUG_DRAG` | Logs each click in the main window and whether it landed in the header that moves the window |
 | `HOTTY_OVERLAY_DEMO` | Runs six fake sessions through the overlay and menu bar icon at dictation speed |
 | `HOTTY_AUDIO_TEST` | Runs three start/finish recording cycles on the current input device |
 | `HOTTY_GESTURE_TEST` | In a focused **TextEdit** document (refuses any other app): replace a selection then cancel, then dictate and send |
