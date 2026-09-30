@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag like v0.2.0 to build, sign, notarize and publish HoTty, then update the
-# Homebrew cask in justanotheratom/homebrew-tap. Uses the same secrets as ccw.
+# Homebrew cask in justanotheratom/homebrew-tap (pushed with a deploy key).
 on:
   push:
     tags:
@@ -31,25 +31,28 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           rm "$RUNNER_TEMP/cert.p12"
 
-      - name: Write notarization key
+      - name: Write notarization and tap keys
         env:
           NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
-        run: echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          echo "$NOTARYTOOL_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$RUNNER_TEMP/tap_key"
+          chmod 600 "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/tap_key"
 
       - name: Build, notarize and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAP_PAT: ${{ secrets.TAP_PAT }}
           NOTARY_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey.p8" ./scripts/release.sh "${GITHUB_REF_NAME#v}" --publish
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey.p8" TAP_SSH_KEY="$RUNNER_TEMP/tap_key" ./scripts/release.sh "${GITHUB_REF_NAME#v}" --publish
 
       - name: Clean up signing material
         if: always()
         run: |
-          rm -f "$RUNNER_TEMP/AuthKey.p8"
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/tap_key"
           security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true

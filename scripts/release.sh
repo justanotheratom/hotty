@@ -16,7 +16,8 @@
 #   - xcrun notarytool store-credentials hotty-notary --apple-id <email> --team-id 58MYNHGN72
 #   - gh auth login, with write access to $RELEASE_REPO and $TAP_REPO
 # In CI, notarization uses an App Store Connect API key instead (NOTARY_KEY_PATH,
-# NOTARY_KEY_ID, NOTARY_ISSUER), BUILD_NUMBER sets CFBundleVersion, and TAP_PAT pushes the tap.
+# NOTARY_KEY_ID, NOTARY_ISSUER), BUILD_NUMBER sets CFBundleVersion, and the tap is pushed with
+# the deploy key at TAP_SSH_KEY.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -116,8 +117,9 @@ curl -fsIL "$URL" >/dev/null && echo "Download is live: $URL"
 
 step "Update the tap ($TAP_REPO)"
 TAP_DIR=$(mktemp -d)
-if [[ -n "${TAP_PAT:-}" ]]; then
-  git clone --quiet "https://x-access-token:${TAP_PAT}@github.com/$TAP_REPO.git" "$TAP_DIR"
+if [[ -n "${TAP_SSH_KEY:-}" ]]; then
+  export GIT_SSH_COMMAND="ssh -i $TAP_SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  git clone --quiet "git@github.com:$TAP_REPO.git" "$TAP_DIR"
 else
   gh repo clone "$TAP_REPO" "$TAP_DIR" -- --quiet
 fi

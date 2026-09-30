@@ -254,7 +254,7 @@ The workflow builds for Apple silicon and Intel, signs with the FUNGEE LLC Devel
 certificate, notarizes and staples, uploads `HoTty-<version>.zip` to this repo's GitHub
 Releases, and updates `Casks/hotty.rb` in
 [justanotheratom/homebrew-tap](https://github.com/justanotheratom/homebrew-tap). It needs
-these repository secrets (the same ones ccw uses):
+these repository secrets:
 
 | Secret | Contents |
 |---|---|
@@ -263,7 +263,7 @@ these repository secrets (the same ones ccw uses):
 | `NOTARYTOOL_KEY` | base64 of the App Store Connect API key (`AuthKey_XXXX.p8`) |
 | `NOTARYTOOL_KEY_ID` | that key's ID |
 | `NOTARYTOOL_ISSUER` | the App Store Connect issuer ID |
-| `TAP_PAT` | a GitHub token that can push to `justanotheratom/homebrew-tap` |
+| `TAP_DEPLOY_KEY` | private half of a write deploy key on `justanotheratom/homebrew-tap` |
 
 The version comes from the tag; the committed `Info.plist` version isn't changed, so bump
 it in a commit too if you want local builds to match.
