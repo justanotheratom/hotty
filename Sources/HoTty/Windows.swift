@@ -78,7 +78,7 @@ final class Windows: NSObject, NSWindowDelegate {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
-        w.title = "HoTty"
+        w.title = "HoTTy"
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
@@ -97,7 +97,7 @@ final class Windows: NSObject, NSWindowDelegate {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 540),
                          styleMask: [.titled, .closable, .miniaturizable],
                          backing: .buffered, defer: false)
-        w.title = "Welcome to HoTty"
+        w.title = "Welcome to HoTTy"
         w.isReleasedWhenClosed = false
         let host = NSHostingController(rootView: OnboardingView(coordinator: coordinator, windows: self))
         host.sizingOptions = []

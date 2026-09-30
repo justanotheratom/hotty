@@ -69,7 +69,7 @@ private struct Sidebar: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 10) {
                 AppIconImage(size: 30)
-                Text("HoTty").font(.system(size: 16, weight: .bold))
+                Text("HoTTy").font(.system(size: 16, weight: .bold))
             }
             .padding(.horizontal, 8)
             .padding(.top, 44)   // below the traffic lights
@@ -117,8 +117,8 @@ private struct Sidebar: View {
 
     private var brokenReason: String {
         coordinator.state.accessibilityGranted
-            ? "HoTty needs Microphone access to hear you."
-            : "HoTty needs Accessibility access to type."
+            ? "HoTTy needs Microphone access to hear you."
+            : "HoTTy needs Accessibility access to type."
     }
 }
 
@@ -229,7 +229,7 @@ private struct HomePage: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 20)).foregroundStyle(Theme.bad)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ax ? "HoTty can't hear you" : "HoTty can't type into other apps")
+                Text(ax ? "HoTTy can't hear you" : "HoTTy can't type into other apps")
                     .font(.system(size: 14, weight: .bold))
                 Text(ax ? "Microphone access is off. Turn it on and dictation starts working again."
                         : "Accessibility access was turned off. Turn it back on and dictation starts working again.")
@@ -271,8 +271,8 @@ private struct HomePage: View {
     private let tasks = [
         TaskInfo(id: .free, title: "Try hands-free", desc: "Drag up while holding, then keep talking", key: "↑"),
         TaskInfo(id: .send, title: "Send a message by voice", desc: "Drag right before letting go in a chat app", key: "→"),
-        TaskInfo(id: .word, title: "Add a custom word", desc: "Teach HoTty a name or term it gets wrong", key: "Vocabulary"),
-        TaskInfo(id: .login, title: "Open HoTty at login", desc: "So it is ready after every restart", key: "Settings"),
+        TaskInfo(id: .word, title: "Add a custom word", desc: "Teach HoTTy a name or term it gets wrong", key: "Vocabulary"),
+        TaskInfo(id: .login, title: "Open HoTTy at login", desc: "So it is ready after every restart", key: "Settings"),
     ]
 
     private func isDone(_ t: Task4) -> Bool { t == .login ? loginOn || store.tasksDone.contains(.login) : store.tasksDone.contains(t) }
@@ -507,7 +507,7 @@ private struct VocabPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("HoTty spells these exactly as written. Add names, products and jargon the speech model gets wrong.")
+            Text("HoTTy spells these exactly as written. Add names, products and jargon the speech model gets wrong.")
                 .font(.system(size: 14)).foregroundStyle(Theme.mute).lineSpacing(3).frame(maxWidth: 560, alignment: .leading)
             HStack(spacing: 8) {
                 InputField(placeholder: "Add a word or name", text: $draft, onSubmit: add).frame(width: 320)
@@ -535,7 +535,7 @@ private struct VocabPage: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Replacements").font(.system(size: 14, weight: .bold))
-                Text("When HoTty hears the phrase on the left, it types the text on the right.").lab()
+                Text("When HoTTy hears the phrase on the left, it types the text on the right.").lab()
                 ForEach(store.replacements) { r in
                     HStack(spacing: 12) {
                         Text("\"\(r.say)\"").foregroundStyle(Theme.mute).frame(width: 200, alignment: .leading)
@@ -639,7 +639,7 @@ struct GestureInfo: Identifiable {
                     dirWord: "left", badge: "✕ Cancel", color: Theme.cancel, after: "Letting go discards the text."),
         GestureInfo(id: "up", arrow: "↑", title: "Drag up: hands-free",
                     desc: "Let go and keep talking. Finish, send or cancel from the buttons on the overlay.",
-                    dirWord: "up", badge: "Lock", color: Theme.indigo, after: "Letting go keeps HoTty listening until you press Finish."),
+                    dirWord: "up", badge: "Lock", color: Theme.indigo, after: "Letting go keeps HoTTy listening until you press Finish."),
     ]
 }
 
@@ -733,7 +733,7 @@ private struct NewsPage: View {
             "Drag right before letting go to send.",
             "Drag left to cancel without typing anything.",
         ]),
-        Entry(ver: "Update 1", title: "Hello, HoTty", items: [
+        Entry(ver: "Update 1", title: "Hello, HoTTy", items: [
             "Hold anywhere you can type, speak, let go.",
             "Runs fully on this Mac with Apple’s speech model.",
         ]),
@@ -932,7 +932,7 @@ private struct GeneralSettings: View {
             SetRow(title: "Start and stop sounds", sub: "A short tone when listening begins and ends") {
                 PillSwitch(isOn: $sounds)
             }
-            SetRow(title: "Open at login", sub: loginError ?? "Keep HoTty ready after a restart") {
+            SetRow(title: "Open at login", sub: loginError ?? "Keep HoTTy ready after a restart") {
                 PillSwitch(isOn: $login)
             }
             SetRow(title: "Onboarding", sub: "Walk through setup and practice again") {
@@ -967,7 +967,7 @@ private struct PermissionSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Everything is processed on this Mac. HoTty never sends audio or text anywhere.")
+            Text("Everything is processed on this Mac. HoTTy never sends audio or text anywhere.")
                 .font(.system(size: 14)).foregroundStyle(Theme.mute).frame(maxWidth: 600, alignment: .leading)
             VStack(spacing: 0) {
                 row("M", "Microphone", "To hear you while you hold", first: true,

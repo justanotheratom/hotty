@@ -1,15 +1,15 @@
-# HoTty — Hold to Talk
+# HoTTy — Hold To Talk utility
 
 <p align="center">
   <a href="docs/hotty-launch.mp4"><img src="docs/hotty-launch.gif" width="800"
-     alt="HoTty in 80 seconds: hold the trackpad on a text field and talk; two hold modes; works in any app; replace a selection; preview or type-live modes; drag right to send, left to cancel, up for hands-free; on-device and private; install with Homebrew"></a>
+     alt="HoTTy in 80 seconds: hold the trackpad on a text field and talk; two hold modes; works in any app; replace a selection; preview or type-live modes; drag right to send, left to cancel, up for hands-free; on-device and private; install with Homebrew"></a>
 </p>
 <p align="center">
   <a href="docs/hotty-launch.mp4">Watch in HD (MP4)</a> ·
   <code>brew install justanotheratom/tap/hotty</code>
 </p>
 
-HoTty is a system-wide dictation utility for macOS. Put the pointer on any text field,
+HoTTy is a system-wide dictation utility for macOS. Put the pointer on any text field,
 **hold the trackpad**, and talk — your words appear at that spot as you speak. Hold on
 selected text and your speech replaces just that text. Let go and you're done.
 
@@ -27,7 +27,7 @@ write, so holding there is also *when* to listen.
 **Two ways to hold** (switch any time)
 - **Press & hold** — click the trackpad and keep it pressed without moving.
 - **Rest finger** — rest one finger on the trackpad, no click. Works with the built-in
-  trackpad and external Magic Trackpads, including ones connected while HoTty runs.
+  trackpad and external Magic Trackpads, including ones connected while HoTTy runs.
 - Adjustable hold duration (0.15–1.5 s).
 
 **Dictation**
@@ -57,7 +57,7 @@ The overlay shows "↵ Send", "✕ Cancel" or "🔒 Lock" while a gesture is arm
 to change your mind.
 
 **Hands-free mode** — for longer dictation while you use the Mac normally
-- Hold, drag up, release: HoTty keeps listening and ignores every gesture, click and key.
+- Hold, drag up, release: HoTTy keeps listening and ignores every gesture, click and key.
 - Switch apps, look things up — text only ever goes into the field you started in.
   While that field doesn't have focus, phrases wait ("Paused · N words waiting") and are
   typed when you return.
@@ -76,7 +76,7 @@ to change your mind.
 
 - **macOS 26 (Tahoe) or later** — SpeechAnalyzer is new in macOS 26.
 - **Apple Silicon Mac** recommended. (If Apple's newer `SpeechTranscriber` model isn't
-  available on a machine, HoTty falls back to `DictationTranscriber`.)
+  available on a machine, HoTTy falls back to `DictationTranscriber`.)
 - **Xcode 26** (for the Swift 6 toolchain and macOS 26 SDK).
 - A trackpad for the hold gestures (press & hold also works with a mouse).
 
@@ -90,7 +90,7 @@ brew install justanotheratom/tap/hotty
 
 Update with `brew upgrade hotty`. Releases are signed with Developer ID and notarized by
 Apple, so they open without Gatekeeper warnings. You can also download the zip from
-[Releases](https://github.com/justanotheratom/hotty/releases) and drag `HoTty.app` into
+[Releases](https://github.com/justanotheratom/hotty/releases) and drag `HoTTy.app` into
 `/Applications`.
 
 ## Build from source
@@ -102,7 +102,7 @@ scripts/build.sh --run
 ```
 
 `scripts/build.sh` builds a release binary with SwiftPM, wraps it into
-`build/HoTty.app`, signs it, and (with `--run`) launches it. HoTty shows in the Dock and
+`build/HoTTy.app`, signs it, and (with `--run`) launches it. HoTTy shows in the Dock and
 in the menu bar (the H icon); click either to open it. It can also be built and run
 from Xcode: open `HoTty.xcodeproj` and press ⌘R.
 
@@ -117,7 +117,7 @@ SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" scripts/build.sh --run
 
 **First launch — grant permissions** (for Homebrew installs too). macOS will ask for:
 1. **Accessibility** — to detect text fields, see the trackpad hold, and type text.
-   System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTty. HoTty picks it
+   System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTTy. HoTTy picks it
    up within a couple of seconds; no restart needed.
 2. **Microphone** — to hear you.
 3. **Speech Recognition**, if prompted.
@@ -126,7 +126,7 @@ The first dictation in a language downloads Apple's on-device speech model (Sett
 shows the status).
 
 To keep it running across restarts, turn on **Launch at login** in Settings, or copy
-`build/HoTty.app` to `/Applications` first.
+`build/HoTTy.app` to `/Applications` first.
 
 ---
 
@@ -164,8 +164,9 @@ Hold type and live-text mode can also be switched straight from the menu bar.
 ## Current limitations
 
 **Platform and distribution**
-- macOS 26+ only. Not on the Mac App Store and not notarized: HoTty needs Accessibility
-  access and a system-wide event tap, which the App Store sandbox doesn't allow. You build it yourself.
+- macOS 26+ only. Not on the Mac App Store: HoTTy needs Accessibility access and a
+  system-wide event tap, which the App Store sandbox doesn't allow. Releases are signed with
+  Developer ID and notarized, and ship through Homebrew.
 - **Rest-finger mode uses Apple's private `MultitouchSupport` framework**, with a data
   layout that was reverse-engineered. A macOS update could break it; press & hold uses
   only public APIs.
@@ -188,7 +189,7 @@ Hold type and live-text mode can also be switched straight from the menu bar.
   "Type live" mode autocomplete or autocorrect popups can interfere.
 - **Send is plain Return** — it sends in chat apps and search boxes but inserts a newline
   in documents and email bodies; apps that send with ⌘Return won't send.
-- Cancel restores text by counting what HoTty typed; if an app autocorrects or reformats
+- Cancel restores text by counting what HoTTy typed; if an app autocorrects or reformats
   during dictation, the restore can be off. In hands-free mode, Cancel only removes text
   typed since you last returned to the field.
 - The mid-sentence lowercasing heuristic can lowercase a proper noun that starts a phrase.
@@ -225,17 +226,17 @@ Hold type and live-text mode can also be switched straight from the menu bar.
 
 ```bash
 swift build                 # compile only
-scripts/build.sh            # build and sign build/HoTty.app
+scripts/build.sh            # build and sign build/HoTTy.app
 scripts/build.sh --run      # …and relaunch it
 ```
 
 ### Debug and self-test modes
 
-Launch through `open` so macOS attributes privacy prompts to HoTty (running the binary
+Launch through `open` so macOS attributes privacy prompts to HoTTy (running the binary
 directly from a shell aborts on a privacy check):
 
 ```bash
-open --env HOTTY_DEBUG_TOUCH=1 --stdout /tmp/hotty.log --stderr /tmp/hotty.log build/HoTty.app
+open --env HOTTY_DEBUG_TOUCH=1 --stdout /tmp/hotty.log --stderr /tmp/hotty.log build/HoTTy.app
 ```
 
 | Variable | What it does |
@@ -260,7 +261,7 @@ git tag v0.2.0 && git push origin v0.2.0
 ```
 
 The workflow builds for Apple silicon and Intel, signs with the FUNGEE LLC Developer ID
-certificate, notarizes and staples, uploads `HoTty-<version>.zip` to this repo's GitHub
+certificate, notarizes and staples, uploads `HoTTy-<version>.zip` to this repo's GitHub
 Releases, and updates `Casks/hotty.rb` in
 [justanotheratom/homebrew-tap](https://github.com/justanotheratom/homebrew-tap). It needs
 these repository secrets:
@@ -303,7 +304,7 @@ silicon and Intel, and puts the zip in `dist/`. Commit the version bump afterwar
 
 `docs/hotty-launch.mp4` and `docs/hotty-launch.gif` are rendered from
 [`design/launch-video/scene.html`](design/launch-video/scene.html), a scripted animation
-of HoTty's UI (open it in a browser to preview it playing). To re-render after editing it,
+of HoTTy's UI (open it in a browser to preview it playing). To re-render after editing it,
 with ffmpeg, Google Chrome and `playwright-core` installed:
 
 ```sh
@@ -322,7 +323,7 @@ and an Electron app) and with both hold types, and note in the PR what you tried
 
 ## License
 
-HoTty is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
+HoTTy is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
 free to use, modify and share for any noncommercial purpose — personal use, research,
 education, charities and public institutions. Commercial use needs a separate license
 from FUNGEE LLC.

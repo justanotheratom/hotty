@@ -4,14 +4,14 @@ cask "hotty" do
   version "@VERSION@"
   sha256 "@SHA256@"
 
-  url "https://github.com/@RELEASE_REPO@/releases/download/v#{version}/HoTty-#{version}.zip"
-  name "HoTty"
+  url "https://github.com/@RELEASE_REPO@/releases/download/v#{version}/HoTTy-#{version}.zip"
+  name "HoTTy"
   desc "Hold on any text field, speak, and let go to type"
   homepage "https://github.com/justanotheratom/hotty"
 
   depends_on macos: ">= :tahoe"
 
-  app "HoTty.app"
+  app "HoTTy.app"
 
   uninstall quit: "llc.fungee.hotty"
 

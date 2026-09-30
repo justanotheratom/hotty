@@ -71,7 +71,7 @@ struct OnboardingView: View {
         switch step {
         case 0: "Get started"
         case 6: practiced.isEmpty ? "Skip for now" : "Continue"
-        case Self.count - 1: "Start using HoTty"
+        case Self.count - 1: "Start using HoTTy"
         default: "Continue"
         }
     }
@@ -156,7 +156,7 @@ private struct WelcomeStep: View {
         VStack(alignment: .leading, spacing: 24) {
             AppIconImage(size: 76)
             StepHeader(title: "Talk anywhere you can type",
-                       lede: "Hold down on any text field, say what you want to write, and let go. HoTty types it for you, in any app.")
+                       lede: "Hold down on any text field, say what you want to write, and let go. HoTTy types it for you, in any app.")
             VStack(alignment: .leading, spacing: 14) {
                 feature("hand.tap", "Hold, speak, let go", "No shortcut to remember. The hold is the button.")
                 feature("arrow.left.and.right", "Drag to decide", "Drag right to send, left to cancel, up to go hands-free.")
@@ -188,7 +188,7 @@ private struct VoiceStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            StepHeader(title: "Let HoTty hear you",
+            StepHeader(title: "Let HoTTy hear you",
                        lede: "macOS asks twice: once for the microphone, once for speech recognition. Both stay on this Mac.")
             VStack(spacing: 0) {
                 PermRow(letter: "M", name: "Microphone", why: "Listens only while you hold",
@@ -233,8 +233,8 @@ private struct AccessStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            StepHeader(title: "Let HoTty type for you",
-                       lede: "Accessibility access lets HoTty notice when you hold on a text field and type your words there. Switch HoTty on in the list.")
+            StepHeader(title: "Let HoTTy type for you",
+                       lede: "Accessibility access lets HoTTy notice when you hold on a text field and type your words there. Switch HoTTy on in the list.")
             HStack(alignment: .top, spacing: 18) {
                 // A picture of the switch to flip, so the Settings pane is familiar when it opens.
                 VStack(spacing: 0) {
@@ -243,7 +243,7 @@ private struct AccessStep: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 14).padding(.vertical, 9)
                     mockRow(icon: nil, "Terminal", on: true, dim: true)
-                    mockRow(icon: AnyView(AppIconImage(size: 22)), "HoTty", on: granted, dim: false)
+                    mockRow(icon: AnyView(AppIconImage(size: 22)), "HoTTy", on: granted, dim: false)
                     mockRow(icon: nil, "Zoom", on: false, dim: true)
                 }
                 .frame(width: 290)
@@ -252,14 +252,14 @@ private struct AccessStep: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if granted {
                         Chip(text: "Access granted", systemImage: "checkmark", fg: Theme.ok, bg: Theme.okBg)
-                        Text("All set. HoTty can now type into other apps.")
+                        Text("All set. HoTTy can now type into other apps.")
                             .font(.system(size: 13)).foregroundStyle(Theme.mute)
                     } else {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text("Waiting for access…").font(.system(size: 13, weight: .semibold))
                         }
-                        Text("This page moves on by itself once HoTty is switched on.")
+                        Text("This page moves on by itself once HoTTy is switched on.")
                             .font(.system(size: 13)).foregroundStyle(Theme.mute)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("Open System Settings") { SystemSettings.accessibility() }
@@ -395,7 +395,7 @@ private struct LanguageStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             StepHeader(title: "Which language do you speak?",
-                       lede: "HoTty uses Apple's on-device speech model. It downloads once, then works offline.")
+                       lede: "HoTTy uses Apple's on-device speech model. It downloads once, then works offline.")
             HStack(spacing: 12) {
                 Text("Language").font(.system(size: 14, weight: .semibold))
                 LanguagePicker(width: 280)
@@ -577,7 +577,7 @@ private struct TryStep: View {
         } else {
             text = await coordinator.practiceFinish(send: a == .send)
             if text.isEmpty {
-                message = "HoTty didn't catch anything. Try speaking a bit louder."
+                message = "HoTTy didn't catch anything. Try speaking a bit louder."
             } else {
                 message = a == .send ? "Sent. In a chat app, this also presses Return." : "Inserted where you held."
             }
@@ -617,7 +617,7 @@ private struct DoneStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             StepHeader(title: "You're all set",
-                       lede: "HoTty lives in the menu bar. \(holdHint(trigger))")
+                       lede: "HoTTy lives in the menu bar. \(holdHint(trigger))")
             HStack(spacing: 14) {
                 // The menu bar, with HoTty's icon picked out.
                 HStack(spacing: 14) {
@@ -641,7 +641,7 @@ private struct DoneStep: View {
             HStack(spacing: 12) {
                 PillSwitch(isOn: $login)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Open HoTty when I log in").font(.system(size: 14, weight: .semibold))
+                    Text("Open HoTTy when I log in").font(.system(size: 14, weight: .semibold))
                     Text(loginError ?? "So it's ready after every restart").font(.system(size: 12)).foregroundStyle(Theme.mute)
                 }
             }

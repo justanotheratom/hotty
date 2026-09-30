@@ -2,9 +2,9 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>HoTty launch video</title>
+<title>HoTTy launch video</title>
 <!--
-  HoTty launch video, rendered frame by frame by render.mjs.
+  HoTTy launch video, rendered frame by frame by render.mjs.
   Everything is a pure function of time: window.seek(seconds) draws that frame.
   Open this file in a browser to preview it playing in real time.
 -->
@@ -112,8 +112,8 @@
   <div class="scene" id="s-title">
     <div class="center" style="top:170px">
       <div id="t-icon" style="display:inline-block"></div>
-      <div id="t-name" style="font-size:78px;font-weight:800;letter-spacing:-.035em;margin-top:18px">HoTty</div>
-      <div id="t-tag" style="font-size:28px;font-weight:500;opacity:.9;margin-top:6px">Hold to talk. Anywhere on your Mac.</div>
+      <div id="t-name" style="font-size:78px;font-weight:800;letter-spacing:-.01em;margin-top:18px">HoTTy</div>
+      <div id="t-tag" style="font-size:28px;font-weight:500;opacity:.9;margin-top:6px">The Hold To Talk utility for your Mac.</div>
       <div id="t-sub" style="font-size:18px;opacity:.7;margin-top:16px">On-device dictation, triggered by your trackpad.</div>
     </div>
   </div>
@@ -219,7 +219,7 @@
   <div class="scene" id="s-install">
     <div class="center" style="top:175px">
       <div id="i-icon" style="display:inline-block"></div>
-      <div style="font-size:44px;font-weight:800;letter-spacing:-.03em;margin:18px 0 26px">Get HoTty</div>
+      <div style="font-size:44px;font-weight:800;letter-spacing:-.03em;margin:18px 0 26px">Get HoTTy</div>
       <div class="term"><span class="p">$</span><span id="i-cmd"></span></div>
       <div style="font-size:18px;opacity:.8;margin-top:26px">macOS 26 Tahoe or later · Free for noncommercial use</div>
       <div style="font-size:18px;opacity:.65;margin-top:8px">github.com/justanotheratom/hotty</div>
@@ -369,7 +369,7 @@ const scenes = [
                text: drop(take(phrase, n), committed), alpha: 1 - lin(lt, 6.6, 6.8), hint: lt < 3 };
     }
     $('b-field').innerHTML = '• ' + esc(take(phrase, committed)) + (committed && lt < 6.6 ? ' ' : '') + caret;
-    cap = lt < 2 ? ['Point at any text field. Hold the trackpad.', 'A short sound and a small overlay mean HoTty is listening.']
+    cap = lt < 2 ? ['Point at any text field. Hold the trackpad.', 'A short sound and a small overlay mean HoTTy is listening.']
         : lt < 6.3 ? ['Talk.', 'Your words appear right where you held.']
         : ['Let go, and it’s typed.', 'The caret moves to where you held first.'];
   }],
@@ -547,7 +547,7 @@ const scenes = [
       ['On-device', 'Apple SpeechAnalyzer on macOS 26. Works offline.', '<path d="M12 3 4 6v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V6z" fill="none" stroke="#2456c9" stroke-width="2"/><path d="m8.5 12 2.4 2.4 4.6-4.8" fill="none" stroke="#2456c9" stroke-width="2"/>'],
       ['No account, no cloud', 'No sign-up, no per-word cost, nothing leaves your Mac.', '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M4 4l16 16" stroke="#c9342b" stroke-width="2"/>'],
       ['Any language', 'Pick any locale SpeechAnalyzer supports. The model downloads once.', '<circle cx="12" cy="12" r="8.5" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17" fill="none" stroke="#2456c9" stroke-width="1.6"/>'],
-      ['Passwords skipped', 'HoTty never listens into a password field.', '<rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10" fill="none" stroke="#2456c9" stroke-width="2"/>'],
+      ['Passwords skipped', 'HoTTy never listens into a password field.', '<rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10" fill="none" stroke="#2456c9" stroke-width="2"/>'],
       ['Mic changes? Fine.', 'AirPods connecting mid-sentence won’t end your dictation.', '<path d="M8 4a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM16 4a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM8 16v4M16 16v4" fill="none" stroke="#2456c9" stroke-width="1.8"/>'],
       ['Lives in the menu bar', 'Quick switches, history, and launch at login.', '<rect x="3" y="5" width="18" height="4" rx="1.5" fill="#2456c9" opacity=".25"/><rect x="15" y="5.5" width="4" height="3" rx="1" fill="#2456c9"/><rect x="3" y="11" width="18" height="8" rx="2" fill="none" stroke="#2456c9" stroke-width="2"/>'],
     ];
