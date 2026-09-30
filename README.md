@@ -1,5 +1,14 @@
 # HoTty — Hold to Talk
 
+<p align="center">
+  <a href="docs/hotty-launch.mp4"><img src="docs/hotty-launch.gif" width="800"
+     alt="HoTty in 80 seconds: hold the trackpad on a text field and talk; two hold modes; works in any app; replace a selection; preview or type-live modes; drag right to send, left to cancel, up for hands-free; on-device and private; install with Homebrew"></a>
+</p>
+<p align="center">
+  <a href="docs/hotty-launch.mp4">Watch in HD (MP4)</a> ·
+  <code>brew install justanotheratom/tap/hotty</code>
+</p>
+
 HoTty is a system-wide dictation utility for macOS. Put the pointer on any text field,
 **hold the trackpad**, and talk — your words appear at that spot as you speak. Hold on
 selected text and your speech replaces just that text. Let go and you're done.
@@ -289,6 +298,19 @@ Then, for each release:
 The script sets the version in `Info.plist` and the Xcode project, builds for Apple
 silicon and Intel, and puts the zip in `dist/`. Commit the version bump afterwards.
 `--no-notarize` makes a local test build signed with your development certificate.
+
+### Launch video
+
+`docs/hotty-launch.mp4` and `docs/hotty-launch.gif` are rendered from
+[`design/launch-video/scene.html`](design/launch-video/scene.html), a scripted animation
+of HoTty's UI (open it in a browser to preview it playing). To re-render after editing it,
+with ffmpeg, Google Chrome and `playwright-core` installed:
+
+```sh
+cd design/launch-video
+node render.mjs video ../../docs/hotty-launch.mp4
+node render.mjs gif ../../docs/hotty-launch.gif
+```
 
 ### Contributing
 
