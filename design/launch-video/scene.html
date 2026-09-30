@@ -1,0 +1,618 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>HoTty launch video</title>
+<!--
+  HoTty launch video, rendered frame by frame by render.mjs.
+  Everything is a pure function of time: window.seek(seconds) draws that frame.
+  Open this file in a browser to preview it playing in real time.
+-->
+<style>
+  :root {
+    --bg: #fbfaf8; --card: #ffffff; --line: #e4e1db; --text: #1d1d1f; --mute: #5f5e63;
+    --soft: #e9eefb; --acc: #2456c9; --send: #2456c9; --cancel: #c9342b; --indigo: #4b3fc4;
+    --ok: #1f7a3d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 720px; overflow: hidden; background: #0e1630; }
+  body { font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  #stage { position: relative; width: 1280px; height: 720px; overflow: hidden;
+    background: radial-gradient(1200px 700px at 20% 0%, #3c5fd0 0%, transparent 60%),
+                radial-gradient(900px 700px at 100% 100%, #6a4fd8 0%, transparent 55%),
+                linear-gradient(160deg, #1f3a93, #16245e 60%, #1b1850); }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+
+  /* Menu bar */
+  #menubar { position: absolute; top: 0; left: 0; right: 0; height: 28px; z-index: 40;
+    background: rgba(255,255,255,.18); backdrop-filter: blur(20px); color: #fff;
+    display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding: 0 16px;
+    font-size: 13px; font-weight: 600; }
+  #menubar .l { margin-right: auto; display: flex; gap: 20px; font-weight: 600; }
+  #menubar .l span + span { font-weight: 400; }
+  #mb-icon { width: 30px; height: 22px; display: grid; place-items: center; border-radius: 6px; }
+  #mb-icon.hi { background: rgba(255,255,255,.28); }
+
+  /* Captions */
+  #caption { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; z-index: 30; color: #fff; }
+  #cap-title { font-size: 34px; font-weight: 700; letter-spacing: -.02em; text-shadow: 0 2px 20px rgba(0,0,0,.25); }
+  #cap-sub { margin-top: 8px; font-size: 19px; opacity: .82; }
+
+  /* Windows */
+  .win { position: absolute; background: var(--card); border-radius: 12px; overflow: hidden;
+    box-shadow: 0 30px 70px rgba(5,10,40,.45), 0 0 0 .5px rgba(0,0,0,.25); }
+  .bar { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px;
+    background: #f3f1ed; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--mute); }
+  .dots { display: flex; gap: 8px; margin-right: 10px; }
+  .dots i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; display: block; }
+  .dots i:nth-child(2) { background: #febc2e; } .dots i:nth-child(3) { background: #28c840; }
+  .field { font-size: 17px; line-height: 1.55; color: var(--text); white-space: pre-wrap; }
+  .caret { display: inline-block; width: 2px; height: 1.15em; background: var(--acc); vertical-align: -3px; margin-left: 1px; }
+  .sel { background: #b8cdf7; border-radius: 3px; }
+  .tent { color: #8a8a90; border-bottom: 2px dotted #b0b0b8; }
+  .muted { color: var(--mute); }
+
+  /* Overlay (mirrors Overlay.swift) */
+  #ov { position: absolute; z-index: 25; background: rgba(255,255,255,.97); border-radius: 12px;
+    padding: 8px 12px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.28), 0 0 0 .5px rgba(0,0,0,.12);
+    display: none; min-width: 120px; max-width: 420px; }
+  #ov .row { display: flex; align-items: center; gap: 8px; }
+  #ov .meter { display: flex; gap: 2px; align-items: center; height: 16px; }
+  #ov .meter i { width: 3px; border-radius: 2px; background: var(--acc); display: block; }
+  #ov .txt { color: rgba(29,29,31,.88); }
+  #ov .txt.status { color: var(--mute); }
+  #ov .txt.cancelled { opacity: .4; text-decoration: line-through; text-decoration-color: rgba(201,52,43,.6); }
+  #ov .badge { color: #fff; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+  #ov .hint { margin-top: 4px; font-size: 11px; color: var(--mute); }
+  #ov .controls { margin-top: 6px; display: flex; gap: 6px; align-items: center; font-size: 12px; }
+  #ov .controls .time { color: var(--mute); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  #ov .controls .wait { color: #8a4b08; margin-right: 6px; }
+  #ov .btn { font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 6px; background: #efedea; border: .5px solid #d9d6cf; }
+  #ov .btn.send { background: var(--send); color: #fff; border-color: var(--send); }
+  #ov .btn.press { filter: brightness(.85); }
+
+  /* Cursor */
+  #cursor { position: absolute; z-index: 50; width: 24px; height: 24px; left: 0; top: 0; pointer-events: none; }
+
+  /* Trackpad inset */
+  #pad { position: absolute; right: 36px; bottom: 150px; width: 184px; height: 122px; z-index: 35;
+    border-radius: 16px; background: linear-gradient(180deg, #d9d9de, #c7c7cd);
+    box-shadow: 0 16px 40px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.5); opacity: 0; }
+  #pad .lbl { position: absolute; top: -24px; left: 0; right: 0; text-align: center; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.85); letter-spacing: .02em; }
+  #finger { position: absolute; left: 92px; top: 61px; width: 34px; height: 34px; margin: -17px 0 0 -17px; }
+  #pad .arrow { position: absolute; left: 50%; top: 50%; font-size: 22px; font-weight: 700; color: #2456c9; opacity: 0; transform: translate(-50%,-50%); }
+
+  /* Scene-specific */
+  .center { position: absolute; left: 0; right: 0; text-align: center; color: #fff; }
+  .card { position: absolute; background: rgba(255,255,255,.96); border-radius: 18px; box-shadow: 0 24px 60px rgba(5,10,40,.4); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; }
+  .bubble { position: absolute; right: 22px; max-width: 360px; background: var(--acc); color: #fff; border-radius: 16px 16px 4px 16px; padding: 9px 14px; font-size: 15px; }
+  .bubble.in { left: 22px; right: auto; background: #ecebe8; color: var(--text); border-radius: 16px 16px 16px 4px; }
+  .composer { position: absolute; left: 16px; right: 16px; bottom: 14px; height: 44px; border-radius: 22px; border: 1px solid var(--line); background: #fff; padding: 0 16px; display: flex; align-items: center; font-size: 15px; }
+  .feat { position: absolute; width: 370px; height: 146px; padding: 20px 22px; }
+  .feat h3 { font-size: 19px; font-weight: 700; letter-spacing: -.01em; margin: 12px 0 4px; }
+  .feat p { font-size: 14px; color: var(--mute); line-height: 1.4; }
+  .ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--soft); }
+  .term { display: inline-flex; align-items: center; gap: 14px; background: rgba(10,14,35,.72); color: #fff; font: 500 26px ui-monospace, "SF Mono", Menlo, monospace; padding: 18px 28px; border-radius: 14px; box-shadow: 0 0 0 1px rgba(255,255,255,.15), 0 20px 50px rgba(0,0,0,.35); }
+  .term .p { color: #7ea2ff; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <div id="menubar">
+    <div class="l"><span id="mb-app">Finder</span><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+    <svg width="18" height="13" viewBox="0 0 18 13"><path d="M9 12.5 1 4.3a11.3 11.3 0 0 1 16 0z" fill="#fff" opacity=".95"/></svg>
+    <svg width="26" height="12" viewBox="0 0 26 12"><rect x=".5" y=".5" width="22" height="11" rx="3" fill="none" stroke="#fff" opacity=".6"/><rect x="2" y="2" width="16" height="8" rx="1.8" fill="#fff"/><rect x="23.5" y="4" width="1.8" height="4" rx=".9" fill="#fff" opacity=".6"/></svg>
+    <div id="mb-icon"></div>
+    <span id="clock">9:41</span>
+  </div>
+
+  <!-- 1 Title -->
+  <div class="scene" id="s-title">
+    <div class="center" style="top:170px">
+      <div id="t-icon" style="display:inline-block"></div>
+      <div id="t-name" style="font-size:78px;font-weight:800;letter-spacing:-.035em;margin-top:18px">HoTty</div>
+      <div id="t-tag" style="font-size:28px;font-weight:500;opacity:.9;margin-top:6px">Hold to talk. Anywhere on your Mac.</div>
+      <div id="t-sub" style="font-size:18px;opacity:.7;margin-top:16px">On-device dictation, triggered by your trackpad.</div>
+    </div>
+  </div>
+
+  <!-- 2 Basic dictation -->
+  <div class="scene" id="s-basic">
+    <div class="win" style="left:250px;top:88px;width:640px;height:380px">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Notes</div>
+      <div style="padding:26px 34px">
+        <div style="font-size:26px;font-weight:700;margin-bottom:14px">Errands</div>
+        <div class="field muted" style="margin-bottom:6px">• Return library books</div>
+        <div class="field" id="b-field"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 Hold types -->
+  <div class="scene" id="s-hold">
+    <div class="card" id="h-a" style="left:150px;top:92px;width:450px;height:380px;padding:28px 30px">
+      <div style="font-size:14px;font-weight:700;color:var(--acc);letter-spacing:.06em">MODE 1</div>
+      <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:4px">Press &amp; hold</div>
+      <div class="muted" style="font-size:16px;margin-top:6px">Click the trackpad and keep it pressed.</div>
+      <div id="h-pad-a" style="position:absolute;left:95px;top:170px;width:260px;height:160px;border-radius:20px;background:linear-gradient(180deg,#dcdce1,#c8c8ce)"></div>
+    </div>
+    <div class="card" id="h-b" style="left:680px;top:92px;width:450px;height:380px;padding:28px 30px">
+      <div style="font-size:14px;font-weight:700;color:var(--acc);letter-spacing:.06em">MODE 2</div>
+      <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:4px">Rest a finger</div>
+      <div class="muted" style="font-size:16px;margin-top:6px">No click. Built-in and Magic Trackpad.</div>
+      <div id="h-pad-b" style="position:absolute;left:95px;top:170px;width:260px;height:160px;border-radius:20px;background:linear-gradient(180deg,#dcdce1,#c8c8ce)"></div>
+    </div>
+  </div>
+
+  <!-- 4 Works everywhere -->
+  <div class="scene" id="s-every"></div>
+
+  <!-- 5 Replace selection -->
+  <div class="scene" id="s-replace">
+    <div class="win" style="left:230px;top:110px;width:820px;height:300px">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Mail — Re: Plan review</div>
+      <div style="padding:30px 36px">
+        <div class="field muted" style="margin-bottom:10px">Hi Sam,</div>
+        <div class="field" id="r-field" style="font-size:20px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 Live-text modes -->
+  <div class="scene" id="s-live">
+    <div class="win" style="left:110px;top:100px;width:500px;height:250px">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Preview overlay</div>
+      <div style="padding:26px 28px"><div class="field" id="l-a"></div></div>
+    </div>
+    <div class="win" style="left:670px;top:100px;width:500px;height:250px">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Type live</div>
+      <div style="padding:26px 28px"><div class="field" id="l-b"></div></div>
+    </div>
+    <div id="l-ov2" style="position:absolute;left:150px;top:260px;background:rgba(255,255,255,.97);border-radius:12px;padding:8px 12px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.28);display:flex;gap:8px;align-items:center"></div>
+    <div class="center" style="top:392px;font-size:15px;opacity:.85;display:flex;justify-content:center;gap:0">
+      <div style="width:500px;margin-left:-60px">Finished phrases are typed; the rest floats by the pointer.</div>
+      <div style="width:500px;margin-left:60px">Words are typed as you speak and corrected as recognition firms up.</div>
+    </div>
+  </div>
+
+  <!-- 7 Release gestures -->
+  <div class="scene" id="s-gest">
+    <div class="win" style="left:250px;top:70px;width:560px;height:420px;background:#fbfaf8">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Chat — #weekend</div>
+      <div style="position:relative;height:382px">
+        <div class="bubble in" style="top:20px">Dinner at 7? 🍝</div>
+        <div class="bubble in" style="top:66px">Table's booked.</div>
+        <div class="bubble" id="g-sent" style="top:118px;opacity:0"></div>
+        <div class="composer" id="g-comp"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8 Hands-free -->
+  <div class="scene" id="s-free">
+    <div class="win" id="f-doc" style="left:150px;top:70px;width:680px;height:400px">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Pages — Trip notes</div>
+      <div style="padding:26px 34px">
+        <div style="font-size:24px;font-weight:700;margin-bottom:12px">Lisbon</div>
+        <div class="field" id="f-field"></div>
+      </div>
+    </div>
+    <div class="win" id="f-web" style="left:470px;top:120px;width:640px;height:360px;opacity:0">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div>Safari — tram 28 lisbon</div>
+      <div style="padding:26px 30px">
+        <div style="height:14px;width:62%;background:#e6e4df;border-radius:7px;margin-bottom:14px"></div>
+        <div style="font-size:20px;font-weight:700;color:#1a4fbf;margin-bottom:8px">Tram 28: the classic ride up to Alfama</div>
+        <div style="height:10px;width:92%;background:#efede9;border-radius:5px;margin-bottom:9px"></div>
+        <div style="height:10px;width:86%;background:#efede9;border-radius:5px;margin-bottom:9px"></div>
+        <div style="height:10px;width:70%;background:#efede9;border-radius:5px;margin-bottom:24px"></div>
+        <div style="height:120px;border-radius:10px;background:linear-gradient(135deg,#f5c34b,#e2892f)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9 Privacy and more -->
+  <div class="scene" id="s-feat"></div>
+
+  <!-- 10 Install -->
+  <div class="scene" id="s-install">
+    <div class="center" style="top:175px">
+      <div id="i-icon" style="display:inline-block"></div>
+      <div style="font-size:44px;font-weight:800;letter-spacing:-.03em;margin:18px 0 26px">Get HoTty</div>
+      <div class="term"><span class="p">$</span><span id="i-cmd"></span></div>
+      <div style="font-size:18px;opacity:.8;margin-top:26px">macOS 26 Tahoe or later · Free for noncommercial use</div>
+      <div style="font-size:18px;opacity:.65;margin-top:8px">github.com/justanotheratom/hotty</div>
+    </div>
+  </div>
+
+  <div id="ov"></div>
+  <div id="pad"><div class="lbl">TRACKPAD</div><svg id="finger" viewBox="0 0 34 34"></svg><div class="arrow" id="pad-arrow"></div></div>
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2.5v16.8l4.3-4.1 2.8 6.5 3-1.3-2.8-6.4h6.1z" fill="#000" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>
+  <div id="caption"><div id="cap-title"></div><div id="cap-sub"></div></div>
+</div>
+
+<script>
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const seg = (t, a, b) => ease(clamp((t - a) / (b - a)));
+const lin = (t, a, b) => clamp((t - a) / (b - a));
+const mix = (a, b, p) => a + (b - a) * p;
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const words = s => s.split(' ');
+const take = (s, n) => words(s).slice(0, n).join(' ');
+const drop = (s, n) => words(s).slice(n).join(' ');
+const reveal = (s, t, a, b) => Math.round(words(s).length * lin(t, a, b));
+const fade = (t, a, b, f = .35) => clamp((t - a) / f) * clamp((b - t) / f);
+const caret = '<span class="caret"></span>';
+
+// H mark from design/app-icon/AppIcon.svg: two bars and a dot.
+function hMark(h, color = '#fff', tile = null) {
+  const k = h / 500, w = 440 * k;
+  const bars = `<rect x="0" y="0" width="${128*k}" height="${h}" rx="${64*k}"/><rect x="${312*k}" y="0" width="${128*k}" height="${h}" rx="${64*k}"/><circle cx="${220*k}" cy="${250*k}" r="${58*k}"/>`;
+  if (!tile) return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="${color}">${bars}</svg>`;
+  const s = tile, m = .62, ox = (s - w * m) / 2, oy = (s - h * m) / 2;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"><rect width="${s}" height="${s}" rx="${s*.24}" fill="${color}"/><g transform="translate(${ox} ${oy}) scale(${m})" fill="#2456c9">${bars}</g></svg>`;
+}
+function appIcon(size) {
+  const k = size / 1024;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" style="filter:drop-shadow(0 ${18*k*3}px ${30*k*3}px rgba(0,0,0,.35))">
+    <defs><linearGradient id="hb${size}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f66e0"/><stop offset="1" stop-color="#1a3fa3"/></linearGradient>
+    <radialGradient id="gl${size}" cx="50%" cy="-10%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".32"/><stop offset=".7" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#hb${size})"/>
+    <g fill="#fff"><rect x="292" y="262" width="128" height="500" rx="64"/><rect x="604" y="262" width="128" height="500" rx="64"/><circle cx="512" cy="512" r="58"/></g>
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#gl${size})"/></svg>`;
+}
+const lockSvg = c => `<svg width="11" height="12" viewBox="0 0 11 12"><rect x="1" y="5" width="9" height="7" rx="1.6" fill="${c}"/><path d="M3 5V3.6a2.5 2.5 0 0 1 5 0V5" stroke="${c}" stroke-width="1.6" fill="none"/></svg>`;
+
+// ---------- persistent UI state, reset every frame ----------
+let S;
+function reset() {
+  S = {
+    cursor: null,                       // {x, y}
+    pad: null,                          // {mode: 'press'|'rest', hold: 0..1, dx, dy, arrow}
+    ov: null,                           // overlay model, see drawOverlay
+    menu: 'idle',                       // idle | listening | paused
+    app: 'Finder',
+  };
+}
+
+function drawOverlay(t) {
+  const el = $('ov'), o = S.ov;
+  if (!o) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.style.left = o.x + 'px'; el.style.top = o.y + 'px';
+  el.style.opacity = o.alpha ?? 1;
+  const bars = [0, 1, 2, 3, 4].map(i => {
+    const h = o.phase === 'listening' ? 4 + 11 * Math.abs(Math.sin(t * 9 + i * 1.7)) * (0.55 + 0.45 * Math.sin(t * 3.1 + i)) : 4;
+    return `<i style="height:${h.toFixed(1)}px;opacity:${o.phase === 'listening' ? 1 : .35}"></i>`;
+  }).join('');
+  const lead = o.locked ? lockSvg('#4b3fc4') : `<span class="meter">${bars}</span>`;
+  const status = !o.text;
+  const text = status ? (o.phase === 'finishing' ? 'Finishing…' : 'Listening…') : esc(o.text);
+  const badge = {
+    send: `<span class="badge" style="background:var(--send)">↵ Send</span>`,
+    cancel: `<span class="badge" style="background:var(--cancel)">✕ Cancel</span>`,
+    lock: `<span class="badge" style="background:var(--indigo)">${lockSvg('#fff')} Lock</span>`,
+  }[o.badge] || '';
+  let html = `<div class="row">${lead}<span class="txt ${status ? 'status' : ''} ${o.badge === 'cancel' ? 'cancelled' : ''}">${text}</span>${badge}</div>`;
+  if (o.hint) html += `<div class="hint">←&nbsp; cancel &nbsp;&nbsp;&nbsp; ↑&nbsp; lock &nbsp;&nbsp;&nbsp; send &nbsp;→</div>`;
+  if (o.locked) {
+    const secs = Math.max(0, Math.floor(o.elapsed || 0));
+    html += `<div class="controls"><span class="time">${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</span>` +
+      (o.waiting ? `<span class="wait">Paused · ${o.waiting} word${o.waiting === 1 ? '' : 's'} waiting</span>` : '') +
+      `<span class="btn">✕ Cancel</span><span class="btn ${o.press === 'finish' ? 'press' : ''}">✓ Finish</span><span class="btn send">↵ Send</span></div>`;
+  }
+  el.innerHTML = html;
+}
+
+function drawPad(t) {
+  const el = $('pad'), p = S.pad;
+  el.style.opacity = p ? 1 : 0;
+  if (!p) return;
+  const f = $('finger');
+  const press = p.mode === 'press';
+  const r = 13, c = 2 * Math.PI * (r + 3);
+  f.innerHTML = `<circle cx="17" cy="17" r="${r}" fill="${press ? 'rgba(36,86,201,.9)' : 'rgba(36,86,201,.55)'}" stroke="#fff" stroke-width="2"/>` +
+    (p.hold > 0 && p.hold < 1 ? `<circle cx="17" cy="17" r="${r + 3}" fill="none" stroke="#2456c9" stroke-width="2.5" stroke-dasharray="${c * p.hold} ${c}" transform="rotate(-90 17 17)"/>` : '') +
+    (p.hold >= 1 ? `<circle cx="17" cy="17" r="${r + 3}" fill="none" stroke="#2456c9" stroke-width="2.5" opacity=".6"/>` : '');
+  f.style.transform = `translate(${p.dx || 0}px, ${p.dy || 0}px)`;
+  el.style.transform = press ? 'scale(.985)' : 'none';
+  el.style.boxShadow = press ? '0 10px 26px rgba(0,0,0,.35), inset 0 2px 8px rgba(0,0,0,.18)' : '';
+  const a = $('pad-arrow');
+  a.textContent = p.arrow || ''; a.style.opacity = p.arrow ? .9 : 0;
+  a.style.color = { '→': '#2456c9', '←': '#c9342b', '↑': '#4b3fc4' }[p.arrow] || '#2456c9';
+  a.style.transform = `translate(${-50 + (p.arrow === '→' ? 150 : p.arrow === '←' ? -150 : 0)}%, ${-50 + (p.arrow === '↑' ? -150 : 0)}%)`;
+}
+
+// A press-and-hold gesture: finger down at a, hold complete at a+0.35, released at r.
+function gesture(t, a, r, drag = null) {
+  if (t < a || t >= r) return null;
+  const p = { mode: 'press', hold: clamp((t - a) / .35), dx: 0, dy: 0 };
+  if (drag) {
+    const k = seg(t, drag.a, drag.b);
+    p.dx = drag.dx * k * .45; p.dy = drag.dy * k * .45;
+    if (k > .8) p.arrow = drag.dx > 0 ? '→' : drag.dx < 0 ? '←' : '↑';
+  }
+  return p;
+}
+
+// ---------- scenes ----------
+// Each: [id, duration, render(localTime)]. Captions are set by the scene too.
+let cap;
+const scenes = [
+  ['s-title', 4.5, lt => {
+    $('t-icon').innerHTML = appIcon(150);
+    $('t-icon').style.transform = `scale(${mix(.6, 1, seg(lt, .1, 1))})`;
+    $('t-icon').style.opacity = seg(lt, .1, .7);
+    $('t-name').style.opacity = seg(lt, .5, 1.1);
+    $('t-tag').style.opacity = seg(lt, 1, 1.6);
+    $('t-sub').style.opacity = seg(lt, 1.6, 2.2);
+  }],
+
+  ['s-basic', 11.5, lt => {
+    S.app = 'Notes';
+    const phrase = 'Pick up oat milk and coffee on the way home.';
+    const at = { x: 290, y: 218 };
+    const fx = $('b-field').getBoundingClientRect();
+    const target = { x: fx.left + 400, y: fx.top + 6 };
+    const k = seg(lt, .2, 1.4), away = seg(lt, 7, 8.2);
+    S.cursor = { x: mix(820, target.x, k) + 60 * away, y: mix(520, target.y, k) + 90 * away };
+    S.pad = gesture(lt, 1.5, 6.3);
+    const n = reveal(phrase, lt, 2.1, 5.8);
+    const committed = lt >= 6.6 ? 9 : lt >= 4.3 ? 6 : 0;
+    if (lt >= 1.85 && lt < 6.8) {
+      S.menu = 'listening';
+      S.ov = { x: target.x + 18, y: target.y + 26, phase: lt < 6.3 ? 'listening' : 'finishing',
+               text: drop(take(phrase, n), committed), alpha: 1 - lin(lt, 6.6, 6.8), hint: lt < 3 };
+    }
+    $('b-field').innerHTML = '• ' + esc(take(phrase, committed)) + (committed && lt < 6.6 ? ' ' : '') + caret;
+    cap = lt < 2 ? ['Point at any text field. Hold the trackpad.', 'A short sound and a small overlay mean HoTty is listening.']
+        : lt < 6.3 ? ['Talk.', 'Your words appear right where you held.']
+        : ['Let go, and it’s typed.', 'The caret moves to where you held first.'];
+  }],
+
+  ['s-hold', 7, lt => {
+    const loop = lt % 3.2;
+    const pa = $('h-pad-a'), pb = $('h-pad-b');
+    const pressed = loop > .6 && loop < 2.6;
+    const hold = clamp((loop - .6) / .5);
+    const ring = (h, c) => h > 0 ? `<svg width="70" height="70" style="position:absolute;left:95px;top:45px"><circle cx="35" cy="35" r="30" fill="none" stroke="${c}" stroke-width="4" stroke-dasharray="${188 * h} 188" transform="rotate(-90 35 35)"/></svg>` : '';
+    pa.style.transform = pressed ? 'scale(.97)' : 'none';
+    pa.style.boxShadow = pressed ? 'inset 0 4px 14px rgba(0,0,0,.25)' : 'inset 0 0 0 1px rgba(255,255,255,.6)';
+    pa.innerHTML = `<div style="position:absolute;left:108px;top:58px;width:44px;height:44px;border-radius:50%;background:rgba(36,86,201,${pressed ? .9 : .35});border:2px solid #fff"></div>` + (pressed ? ring(hold, '#2456c9') : '') +
+      `<div style="position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:13px;font-weight:600;color:#555">${pressed ? 'click · held' : ''}</div>`;
+    const rest = loop > .6 && loop < 2.6;
+    pb.innerHTML = `<div style="position:absolute;left:108px;top:58px;width:44px;height:44px;border-radius:50%;background:rgba(36,86,201,${rest ? .5 : .18});border:2px solid #fff;box-shadow:${rest ? '0 0 0 10px rgba(36,86,201,.15)' : 'none'}"></div>` + (rest ? ring(hold, '#2456c9') : '') +
+      `<div style="position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:13px;font-weight:600;color:#555">${rest ? 'resting · no click' : ''}</div>`;
+    $('h-a').style.transform = `translateY(${mix(30, 0, seg(lt, 0, .6))}px)`;
+    $('h-b').style.transform = `translateY(${mix(30, 0, seg(lt, .2, .8))}px)`;
+    if (hold >= 1 && pressed) S.menu = 'listening';
+    cap = ['Two ways to hold.', 'Switch any time from the menu bar. Hold time is adjustable, 0.15–1.5 s.'];
+  }],
+
+  ['s-every', 6, lt => {
+    const apps = [
+      ['Notes', 'Call the plumber about the sink'],
+      ['Mail', 'Thanks, that works for me.'],
+      ['Safari', 'best ramen near union square'],
+      ['Chrome · Edge · Brave · Arc', 'Shipping address updated'],
+      ['Slack', 'Deploy is done, all green ✅'],
+      ['VS Code', '// retry with exponential backoff'],
+    ];
+    const el = $('s-every');
+    el.innerHTML = apps.map(([name, line], i) => {
+      const col = i % 3, row = Math.floor(i / 3);
+      const a = .3 + i * .55, n = reveal(line, lt, a + .3, a + 1.3);
+      const shown = seg(lt, a - .3, a);
+      return `<div class="win" style="left:${70 + col * 390}px;top:${80 + row * 200}px;width:360px;height:170px;opacity:${shown};transform:translateY(${mix(20, 0, shown)}px)">
+        <div class="bar"><div class="dots"><i></i><i></i><i></i></div>${name}</div>
+        <div style="padding:22px 20px"><div class="field" style="font-size:16px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-height:46px">${esc(take(line, n))}${lt > a + .3 && lt < a + 1.5 ? caret : ''}</div></div></div>`;
+    }).join('');
+    S.menu = lt > .6 && lt < 4.2 ? 'listening' : 'idle';
+    cap = ['Works in any app with a text field.', 'Native apps, Safari, Chromium browsers and Electron apps.'];
+  }],
+
+  ['s-replace', 8, lt => {
+    S.app = 'Mail';
+    const before = 'Let’s meet on ', oldSel = 'Friday at noon', newSel = 'Thursday afternoon', after = ' to go over the plan.';
+    const f = $('r-field');
+    const replaced = lt >= 3.9;
+    f.innerHTML = esc(before) + (replaced ? `<span id="r-sel" style="background:rgba(184,205,247,${1 - lin(lt, 4, 5)});border-radius:3px">${newSel}</span>` : `<span class="sel" id="r-sel">${oldSel}</span>`) + esc(after);
+    const r = $('r-sel').getBoundingClientRect();
+    const target = { x: r.left + r.width * .45, y: r.top + r.height * .5 };
+    const k = seg(lt, .2, 1);
+    const away = seg(lt, 4.2, 5.2);
+    S.cursor = { x: mix(900, target.x, k) + 40 * away, y: mix(470, target.y, k) + 80 * away };
+    S.pad = gesture(lt, 1.1, 3.8);
+    if (lt >= 1.45 && lt < 4.1) {
+      S.menu = 'listening';
+      S.ov = { x: target.x + 16, y: target.y + 24, phase: lt < 3.8 ? 'listening' : 'finishing',
+               text: take(newSel, reveal(newSel, lt, 1.8, 3.2)), alpha: 1 - lin(lt, 3.9, 4.1) };
+    }
+    cap = lt < 3.9 ? ['Hold on selected text to replace it.', 'Only the selection changes.']
+        : ['Spacing and capitalization fit in.', 'Mid-sentence words are lowercased; spaces are added where needed.'];
+  }],
+
+  ['s-live', 8, lt => {
+    const phrase = 'The quick sync moved to three o’clock tomorrow';
+    const n = reveal(phrase, lt, .8, 5.6);
+    const done = lt > 6.2;
+    // Left: phrases commit; in-progress words float in the overlay.
+    const commit = done ? 8 : n >= 5 && lt > 3.6 ? 4 : 0;
+    $('l-a').innerHTML = esc(take(phrase, commit)) + caret;
+    const pending = done ? '' : drop(take(phrase, n), commit);
+    const bars = [0, 1, 2, 3, 4].map(i => `<i style="display:block;width:3px;border-radius:2px;background:#2456c9;height:${(4 + 11 * Math.abs(Math.sin(lt * 9 + i * 1.7))).toFixed(1)}px"></i>`).join('');
+    const ov2 = $('l-ov2');
+    ov2.style.opacity = done ? 1 - lin(lt, 6.2, 6.5) : lt > .5 ? 1 : 0;
+    ov2.innerHTML = `<span style="display:flex;gap:2px;align-items:center;height:16px">${bars}</span><span style="color:${pending ? 'rgba(29,29,31,.88)' : '#5f5e63'}">${pending ? esc(pending) : 'Listening…'}</span>`;
+    // Right: typed live, the newest word tentative, with one correction.
+    let live = take(phrase, n).split(' ');
+    if (n >= 3 && lt < 2.7) live[2] = 'sink';
+    const last = !done && n > 0 ? live.pop() : null;
+    $('l-b').innerHTML = esc(live.join(' ')) + (last ? (live.length ? ' ' : '') + `<span class="tent">${esc(last)}</span>` : '') + caret;
+    S.menu = lt > .5 && !done ? 'listening' : 'idle';
+    cap = ['Two live-text modes.', 'Preview in-progress words in an overlay, or type them straight into the field.'];
+  }],
+
+  ['s-gest', 9.2, lt => {
+    S.app = 'Chat';
+    const comp = $('g-comp').getBoundingClientRect();
+    const home = { x: comp.right - 150, y: comp.top + comp.height / 2 };
+    const a = 'Running five minutes late, see you soon', b = 'Actually, never mind';
+    let text = '', sent = 0;
+    // Beat 1: drag right to send.
+    if (lt < 4.6) {
+      const k = seg(lt, 0, .6);
+      const dx = 72 * seg(lt, 3, 3.5) * (lt < 3.7 ? 1 : 1);
+      S.cursor = { x: mix(880, home.x, k) + (lt < 3.8 ? dx : 72), y: mix(300, home.y, k) };
+      S.pad = gesture(lt, .7, 3.7, { a: 3, b: 3.5, dx: 72, dy: 0 });
+      const n = reveal(a, lt, 1.2, 2.9), commit = lt >= 3.7 ? 7 : lt >= 2.4 ? 4 : 0;
+      text = take(a, commit);
+      if (lt >= 1.05 && lt < 3.9) {
+        S.menu = 'listening';
+        S.ov = { x: comp.left + 20, y: home.y - 78, phase: lt < 3.7 ? 'listening' : 'finishing',
+                 text: drop(take(a, n), commit), badge: lt > 3.35 && lt < 3.9 ? 'send' : null,
+                 hint: lt < 2.2, alpha: 1 - lin(lt, 3.75, 3.9) };
+      }
+      if (lt >= 3.9) { text = ''; sent = seg(lt, 3.9, 4.2); }
+      cap = ['Drag right before letting go to send.', 'Types it, then presses Return.'];
+    } else {
+      sent = 1;
+      const bt = lt - 4.6;
+      const dx = -72 * seg(bt, 2, 2.5);
+      S.cursor = { x: home.x + 72 * (1 - seg(bt, 0, .4)) + (bt < 2.9 ? dx : -72), y: home.y };
+      S.pad = gesture(bt, .2, 2.8, { a: 2, b: 2.5, dx: -72, dy: 0 });
+      const n = reveal(b, bt, .7, 1.8), commit = bt >= 1.3 && bt < 2.9 ? 1 : 0;
+      text = take(b, commit);
+      if (bt >= .55 && bt < 3) {
+        S.menu = 'listening';
+        S.ov = { x: comp.left + 20, y: home.y - 58, phase: bt < 2.8 ? 'listening' : 'finishing',
+                 text: bt >= 2.35 ? take(b, n) : drop(take(b, n), commit), badge: bt > 2.35 ? 'cancel' : null,
+                 alpha: 1 - lin(bt, 2.85, 3) };
+      }
+      cap = bt < 3.1 ? ['Drag left to cancel.', 'Deletes what was typed and restores any selection it replaced.']
+                     : ['Changed your mind? Slide back.', 'The overlay shows what will happen before you let go.'];
+    }
+    $('g-comp').innerHTML = text ? esc(text) + caret : `<span class="muted">Message #weekend</span>`;
+    const g = $('g-sent');
+    g.textContent = a; g.style.opacity = sent; g.style.transform = `translateY(${mix(14, 0, sent)}px)`;
+  }],
+
+  ['s-free', 13, lt => {
+    S.app = 'Pages';
+    const dictA = 'Day one: land around noon, check in, then walk to the old town for dinner.';
+    const dictB = 'Take tram 28 up the hill.';
+    const f = $('f-field'), web = $('f-web');
+    const webIn = seg(lt, 5.6, 6.1) * (1 - seg(lt, 8.8, 9.2));
+    web.style.opacity = webIn; web.style.transform = `translateY(${mix(20, 0, webIn)}px)`;
+    const lockAt = 2.0;
+    const nA = lt < 2.3 ? 0 : reveal(dictA, lt, 2.3, 5.3);
+    const waiting = lt < 6.1 ? 0 : Math.min(6, reveal(dictB, lt, 6.3, 8.4));
+    const typedB = lt < 9.3 ? 0 : 6;
+    f.innerHTML = esc(take(dictA, Math.max(0, nA - (lt < 5.3 ? 2 : 0)))) + (typedB ? ' ' + esc(dictB) : '') + caret;
+    // Cursor: to the doc, then over the browser, then onto Finish.
+    const fr = f.getBoundingClientRect();
+    const home = { x: fr.left + 60, y: fr.top + 170 };
+    let cx = mix(900, home.x, seg(lt, 0, .6)), cy = mix(480, home.y, seg(lt, 0, .6));
+    cy -= 70 * seg(lt, 1.3, 1.8);
+    if (lt > 5.6) { cx = mix(cx, 760, seg(lt, 5.6, 6.3)); cy = mix(cy, 330, seg(lt, 5.6, 6.3)); }
+    S.pad = gesture(lt, .7, lockAt, { a: 1.3, b: 1.8, dx: 0, dy: -70 });
+    const ovPos = { x: home.x + 18, y: home.y + 26 - 70 };
+    if (lt > 10.2) {
+      const fin = { x: ovPos.x + 170, y: ovPos.y + 44 };
+      cx = mix(cx, fin.x, seg(lt, 10.2, 11)); cy = mix(cy, fin.y, seg(lt, 10.2, 11));
+    }
+    S.cursor = { x: cx, y: cy };
+    if (lt >= 1.05 && lt < 11.6) {
+      const locked = lt >= lockAt;
+      S.menu = waiting && lt < 9.3 ? 'paused' : 'listening';
+      S.ov = { x: ovPos.x, y: ovPos.y, phase: 'listening', locked,
+               badge: !locked && lt > 1.7 ? 'lock' : null,
+               text: locked ? (lt < 5.3 && nA ? drop(take(dictA, nA), nA - 2) : waiting && lt < 9.3 ? '' : '') : '',
+               elapsed: locked ? (lt - lockAt) * 1.6 : 0, waiting: lt < 9.3 ? waiting : 0,
+               press: lt > 11.1 && lt < 11.4 ? 'finish' : null, alpha: 1 - lin(lt, 11.4, 11.6) };
+    }
+    S.app = webIn > .5 ? 'Safari' : 'Pages';
+    cap = lt < 2.2 ? ['Drag up for hands-free.', 'For longer dictation while you use your Mac normally.']
+        : lt < 5.6 ? ['Keep talking. No holding.', 'Clicks, keys and gestures are ignored while you dictate.']
+        : lt < 9.3 ? ['Switch apps, look things up.', 'Text only goes into the field you started in. The rest waits.']
+        : ['Finish, Send or Cancel from the overlay.', 'Finish and Send bring your field back to the front first.'];
+  }],
+
+  ['s-feat', 7.5, lt => {
+    const feats = [
+      ['On-device', 'Apple SpeechAnalyzer on macOS 26. Works offline.', '<path d="M12 3 4 6v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V6z" fill="none" stroke="#2456c9" stroke-width="2"/><path d="m8.5 12 2.4 2.4 4.6-4.8" fill="none" stroke="#2456c9" stroke-width="2"/>'],
+      ['No account, no cloud', 'No sign-up, no per-word cost, nothing leaves your Mac.', '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M4 4l16 16" stroke="#c9342b" stroke-width="2"/>'],
+      ['Any language', 'Pick any locale SpeechAnalyzer supports. The model downloads once.', '<circle cx="12" cy="12" r="8.5" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17" fill="none" stroke="#2456c9" stroke-width="1.6"/>'],
+      ['Passwords skipped', 'HoTty never listens into a password field.', '<rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="#2456c9" stroke-width="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10" fill="none" stroke="#2456c9" stroke-width="2"/>'],
+      ['Mic changes? Fine.', 'AirPods connecting mid-sentence won’t end your dictation.', '<path d="M8 4a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM16 4a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM8 16v4M16 16v4" fill="none" stroke="#2456c9" stroke-width="1.8"/>'],
+      ['Lives in the menu bar', 'Quick switches, history, and launch at login.', '<rect x="3" y="5" width="18" height="4" rx="1.5" fill="#2456c9" opacity=".25"/><rect x="15" y="5.5" width="4" height="3" rx="1" fill="#2456c9"/><rect x="3" y="11" width="18" height="8" rx="2" fill="none" stroke="#2456c9" stroke-width="2"/>'],
+    ];
+    $('s-feat').innerHTML = feats.map(([h, p, icon], i) => {
+      const col = i % 3, row = Math.floor(i / 3), s = seg(lt, .15 + i * .18, .65 + i * .18);
+      return `<div class="card feat" style="left:${50 + col * 400}px;top:${92 + row * 172}px;opacity:${s};transform:translateY(${mix(24, 0, s)}px)">
+        <div class="ico"><svg width="24" height="24" viewBox="0 0 24 24">${icon}</svg></div><h3>${h}</h3><p>${p}</p></div>`;
+    }).join('');
+    cap = ['Private by design.', 'And the details that make it feel native.'];
+  }],
+
+  ['s-install', 7.5, lt => {
+    $('i-icon').innerHTML = appIcon(120);
+    const cmd = 'brew install justanotheratom/tap/hotty';
+    const n = Math.round(cmd.length * lin(lt, .8, 2.6));
+    $('i-cmd').innerHTML = esc(cmd.slice(0, n)) + (lt % 1 < .55 || n < cmd.length ? '<span style="display:inline-block;width:12px;height:26px;background:#fff;vertical-align:-4px;margin-left:2px"></span>' : '');
+    cap = ['', ''];
+  }],
+];
+
+const starts = []; let total = 0;
+for (const s of scenes) { starts.push(total); total += s[1]; }
+window.DURATION = total;
+
+// ---------- frame ----------
+window.seek = function (t) {
+  reset(); cap = ['', ''];
+  scenes.forEach(([id, dur, render], i) => {
+    const lt = t - starts[i], el = $(id);
+    const o = clamp(lt / .45) * clamp((dur - lt) / .45);
+    const first = i === 0, last = i === scenes.length - 1;
+    const op = first ? clamp((dur - lt) / .45) * (lt >= 0 ? 1 : 0) : last ? clamp(lt / .45) : o;
+    el.style.opacity = op;
+    if (lt >= -.01 && lt <= dur + .01) {
+      const keep = S;
+      render(clamp(lt, 0, dur));
+      if (op < .5 && lt > dur / 2) { S = keep; }   // the incoming scene owns the pointer
+    }
+  });
+  // Cursor, overlay and trackpad fade with their scene.
+  const i = starts.findIndex((s, k) => t >= s && t < s + scenes[k][1]);
+  const lt = t - starts[Math.max(0, i)], dur = scenes[Math.max(0, i)][1];
+  const vis = clamp(lt / .45) * clamp((dur - lt) / .45);
+  const c = $('cursor');
+  c.style.opacity = S.cursor ? vis : 0;
+  if (S.cursor) c.style.transform = `translate(${S.cursor.x - 5}px, ${S.cursor.y - 3}px)`;
+  if (S.ov) S.ov.alpha = (S.ov.alpha ?? 1) * vis;
+  drawOverlay(t);
+  drawPad(t);
+  $('pad').style.opacity = S.pad ? vis : 0;
+  $('mb-icon').innerHTML = S.menu === 'listening' ? hMark(16, '#fff', 18) : hMark(16, S.menu === 'paused' ? 'rgba(255,255,255,.4)' : '#fff');
+  $('mb-app').textContent = S.app;
+  // Captions: crossfade whenever the text changes.
+  const key = cap.join('|');
+  if (key !== window._capKey) { window._capKey = key; window._capAt = t; }
+  const ca = $('caption');
+  ca.style.opacity = key === '|' ? 0 : clamp((t - window._capAt) / .3) * vis;
+  $('cap-title').textContent = cap[0]; $('cap-sub').textContent = cap[1];
+};
+
+// Real-time preview when opened directly (render.mjs sets ?render).
+if (!location.search.includes('render')) {
+  const t0 = performance.now();
+  (function tick() { window.seek(((performance.now() - t0) / 1000) % total); requestAnimationFrame(tick); })();
+}
+</script>
+</body>
+</html>
