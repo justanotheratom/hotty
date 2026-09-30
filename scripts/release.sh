@@ -10,10 +10,13 @@
 #   --no-notarize  test run: skip Apple's check and sign with a development certificate.
 #                  The result only opens on Macs that already trust your certificate.
 #
-# One-time setup (see README, "Releasing"):
+# Normally run by .github/workflows/release.yml when a v* tag is pushed. To run it locally
+# (see README, "Releasing"):
 #   - a "Developer ID Application" certificate in the keychain
-#   - xcrun notarytool store-credentials hotty-notary --apple-id <email> --team-id <team>
+#   - xcrun notarytool store-credentials hotty-notary --apple-id <email> --team-id 58MYNHGN72
 #   - gh auth login, with write access to $RELEASE_REPO and $TAP_REPO
+# In CI, notarization uses an App Store Connect API key instead (NOTARY_KEY_PATH,
+# NOTARY_KEY_ID, NOTARY_ISSUER), BUILD_NUMBER sets CFBundleVersion, and TAP_PAT pushes the tap.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -36,9 +39,8 @@ if (( PUBLISH && !NOTARIZE )); then
   exit 2
 fi
 
-# The source repo is private, so the downloads live on the public tap repo.
 TAP_REPO=${TAP_REPO:-justanotheratom/homebrew-tap}
-RELEASE_REPO=${RELEASE_REPO:-$TAP_REPO}
+RELEASE_REPO=${RELEASE_REPO:-justanotheratom/hotty}
 NOTARY_PROFILE=${NOTARY_PROFILE:-hotty-notary}
 TAG="v$VERSION"
 DIST=dist
@@ -50,7 +52,7 @@ step() { print -P "\n%F{blue}==>%f %B$1%b" }
 
 step "Version $VERSION"
 PLIST=Resources/Info.plist
-BUILD=$(( $(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST") + 1 ))
+BUILD=${BUILD_NUMBER:-$(( $(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST") + 1 ))}
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $BUILD" "$PLIST"
 sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $VERSION;/; s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = $BUILD;/" \
   HoTty.xcodeproj/project.pbxproj
@@ -81,7 +83,12 @@ rm -f "$ZIP"
 if (( NOTARIZE )); then
   step "Notarize (Apple checks the app; usually a few minutes)"
   ditto -c -k --keepParent "$APP" "$DIST/notarize.zip"
-  xcrun notarytool submit "$DIST/notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+  if [[ -n "${NOTARY_KEY_PATH:-}" ]]; then
+    NOTARY_AUTH=(--key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+  else
+    NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+  fi
+  xcrun notarytool submit "$DIST/notarize.zip" "${NOTARY_AUTH[@]}" --wait
   rm "$DIST/notarize.zip"
   xcrun stapler staple "$APP"
   spctl --assess --type execute --verbose=2 "$APP"
@@ -109,12 +116,20 @@ curl -fsIL "$URL" >/dev/null && echo "Download is live: $URL"
 
 step "Update the tap ($TAP_REPO)"
 TAP_DIR=$(mktemp -d)
-gh repo clone "$TAP_REPO" "$TAP_DIR" -- --quiet
+if [[ -n "${TAP_PAT:-}" ]]; then
+  git clone --quiet "https://x-access-token:${TAP_PAT}@github.com/$TAP_REPO.git" "$TAP_DIR"
+else
+  gh repo clone "$TAP_REPO" "$TAP_DIR" -- --quiet
+fi
 mkdir -p "$TAP_DIR/Casks"
 cp "$CASK" "$TAP_DIR/Casks/hotty.rb"
 git -C "$TAP_DIR" add Casks/hotty.rb
-git -C "$TAP_DIR" commit --quiet -m "hotty $VERSION"
-git -C "$TAP_DIR" push --quiet
+if git -C "$TAP_DIR" diff --cached --quiet; then
+  echo "Cask unchanged"
+else
+  git -C "$TAP_DIR" commit --quiet -m "hotty $VERSION"
+  git -C "$TAP_DIR" push --quiet
+fi
 rm -rf "$TAP_DIR"
 
 step "Released HoTty $VERSION"
