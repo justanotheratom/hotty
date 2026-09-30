@@ -223,6 +223,48 @@ struct AppIconImage: View {
     }
 }
 
+/// The app icon's H mark (two bars and a dot, from design/app-icon/AppIcon.svg) as a template
+/// image for the menu bar, so it tints with the menu bar like system icons do.
+enum HoTtyMark {
+    enum Style { case idle, listening, paused }
+
+    static func image(_ style: Style, height: CGFloat = 16) -> NSImage {
+        // SVG units: bars 128×500 at x 292 and 604, y 262; dot r 58 at the center.
+        let k = height / 500
+        let markW = 440 * k
+        let side = style == .listening ? height + 2 : height
+        let size = NSSize(width: style == .listening ? side : markW, height: side)
+        let img = NSImage(size: size, flipped: false) { rect in
+            let ox = (rect.width - markW) / 2, oy = (rect.height - height) / 2
+            let mark = NSBezierPath()
+            for x in [0.0, 312.0] {
+                mark.append(NSBezierPath(roundedRect: NSRect(x: ox + x * k, y: oy, width: 128 * k, height: height),
+                                         xRadius: 64 * k, yRadius: 64 * k))
+            }
+            mark.append(NSBezierPath(ovalIn: NSRect(x: ox + (220 - 58) * k, y: oy + (250 - 58) * k,
+                                                    width: 116 * k, height: 116 * k)))
+            if style == .listening {
+                // Knock the mark out of a filled tile, like the white mark on the blue icon.
+                NSColor.black.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: side * 0.24, yRadius: side * 0.24).fill()
+                NSGraphicsContext.current?.compositingOperation = .destinationOut
+                let inset = NSAffineTransform()
+                inset.translateX(by: rect.midX, yBy: rect.midY)
+                inset.scale(by: 0.62)
+                inset.translateX(by: -rect.midX, yBy: -rect.midY)
+                mark.transform(using: inset as AffineTransform)
+            } else {
+                NSColor.black.withAlphaComponent(style == .paused ? 0.4 : 1).setFill()
+            }
+            mark.fill()
+            return true
+        }
+        img.isTemplate = true
+        img.accessibilityDescription = "HoTty"
+        return img
+    }
+}
+
 /// The icon of the app a dictation went into, or its initial on a tile.
 struct AppBadge: View {
     let name: String
