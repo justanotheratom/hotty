@@ -73,9 +73,18 @@ to change your mind.
 
 ---
 
-## Install and run locally
+## Install
 
-HoTty is distributed as source for now; there's no prebuilt download.
+```bash
+brew install justanotheratom/tap/hotty
+```
+
+Update with `brew upgrade hotty`. Releases are signed with Developer ID and notarized by
+Apple, so they open without Gatekeeper warnings. You can also download the zip from
+[Releases](https://github.com/justanotheratom/hotty/releases) and drag `HoTty.app` into
+`/Applications`.
+
+## Build from source
 
 ```bash
 git clone https://github.com/justanotheratom/hotty.git
@@ -97,7 +106,7 @@ after every rebuild. To pick an identity explicitly:
 SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" scripts/build.sh --run
 ```
 
-**First launch — grant permissions.** macOS will ask for:
+**First launch — grant permissions** (for Homebrew installs too). macOS will ask for:
 1. **Accessibility** — to detect text fields, see the trackpad hold, and type text.
    System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTty. HoTty picks it
    up within a couple of seconds; no restart needed.
@@ -234,18 +243,39 @@ focused app — don't type while they run.
 
 ### Releasing
 
-Users install HoTty with `brew install justanotheratom/tap/hotty` and update with
-`brew upgrade hotty`. This repo is private, so the downloads and the cask live in the
-public tap repo (`justanotheratom/homebrew-tap`; override with `TAP_REPO`).
+Push a version tag and GitHub Actions does the rest
+([release.yml](.github/workflows/release.yml)):
 
-One-time setup:
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow builds for Apple silicon and Intel, signs with the FUNGEE LLC Developer ID
+certificate, notarizes and staples, uploads `HoTty-<version>.zip` to this repo's GitHub
+Releases, and updates `Casks/hotty.rb` in
+[justanotheratom/homebrew-tap](https://github.com/justanotheratom/homebrew-tap). It needs
+these repository secrets:
+
+| Secret | Contents |
+|---|---|
+| `APPLE_CERTIFICATE` | base64 of the *Developer ID Application* `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | password of that `.p12` |
+| `NOTARYTOOL_KEY` | base64 of the App Store Connect API key (`AuthKey_XXXX.p8`) |
+| `NOTARYTOOL_KEY_ID` | that key's ID |
+| `NOTARYTOOL_ISSUER` | the App Store Connect issuer ID |
+| `TAP_DEPLOY_KEY` | private half of a write deploy key on `justanotheratom/homebrew-tap` |
+
+The version comes from the tag; the committed `Info.plist` version isn't changed, so bump
+it in a commit too if you want local builds to match.
+
+To release from your own Mac instead, one-time setup:
 
 1. A **Developer ID Application** certificate: Xcode › Settings › Accounts › Manage
    Certificates › + › Developer ID Application.
 2. An app-specific password from [account.apple.com](https://account.apple.com), saved
    to the keychain (you'll be prompted for it; don't put it in a script):
    ```sh
-   xcrun notarytool store-credentials hotty-notary --apple-id <you@example.com> --team-id M383Y43787
+   xcrun notarytool store-credentials hotty-notary --apple-id <you@example.com> --team-id 58MYNHGN72
    ```
 3. `gh auth login` with write access to the tap repo.
 
@@ -265,3 +295,12 @@ silicon and Intel, and puts the zip in `dist/`. Commit the version bump afterwar
 Work on a branch and open a pull request against `main`. Please test the flows your
 change touches in a few apps (a native app like TextEdit or Notes, a Chromium browser,
 and an Electron app) and with both hold types, and note in the PR what you tried.
+
+---
+
+## License
+
+HoTty is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
+free to use, modify and share for any noncommercial purpose — personal use, research,
+education, charities and public institutions. Commercial use needs a separate license
+from FUNGEE LLC.
