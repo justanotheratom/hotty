@@ -15,7 +15,7 @@ struct Dictation: Codable, Identifiable, Hashable {
     var words: Int { Store.wordCount(text) }
 }
 
-/// "When HoTty hears `say`, it types `type`."
+/// "When HoTTy hears `say`, it types `type`."
 struct Replacement: Codable, Identifiable, Hashable {
     var id = UUID()
     var say: String
@@ -54,7 +54,7 @@ final class Store {
         var pausedUntil: Date?
     }
 
-    private static let defaultWords = ["HoTty", "Eightinity", "SwiftUI", "SpeechAnalyzer", "Kubernetes"]
+    private static let defaultWords = ["HoTTy", "Eightinity", "SwiftUI", "SpeechAnalyzer", "Kubernetes"]
     private static let defaultReplacements = [
         Replacement(say: "new line", type: "\n"),
         Replacement(say: "new paragraph", type: "\n\n"),
@@ -185,7 +185,7 @@ final class Store {
 
     private func rebuildMatchers() {
         wordMatchers = words.compactMap { w in
-            // "SwiftUI" may come back as "swift ui", "HoTty" as "hotty": match the word's
+            // "SwiftUI" may come back as "swift ui", "HoTTy" as "hotty": match the word's
             // parts in any case, with optional spaces where the case or letters/digits change.
             let parts = Self.splitParts(w).map(NSRegularExpression.escapedPattern(for:))
             guard !parts.isEmpty else { return nil }

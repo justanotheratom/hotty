@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.0 to build, sign, notarize and publish HoTty, then update the
+# Push a tag like v0.2.0 to build, sign, notarize and publish HoTTy, then update the
 # Homebrew cask in justanotheratom/homebrew-tap (pushed with a deploy key).
 on:
   push:

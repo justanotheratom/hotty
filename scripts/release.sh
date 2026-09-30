@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds a release of HoTty that anyone can install with Homebrew:
+# Builds a release of HoTTy that anyone can install with Homebrew:
 #   1. sets the version, builds for Apple silicon and Intel, signs with Developer ID
 #   2. sends it to Apple for notarization and staples the ticket
 #   3. zips it into dist/ and writes the Homebrew cask with the new version and checksum
@@ -45,9 +45,9 @@ RELEASE_REPO=${RELEASE_REPO:-justanotheratom/hotty}
 NOTARY_PROFILE=${NOTARY_PROFILE:-hotty-notary}
 TAG="v$VERSION"
 DIST=dist
-ZIP="$DIST/HoTty-$VERSION.zip"
+ZIP="$DIST/HoTTy-$VERSION.zip"
 CASK="packaging/homebrew/hotty.rb"
-URL="https://github.com/$RELEASE_REPO/releases/download/$TAG/HoTty-$VERSION.zip"
+URL="https://github.com/$RELEASE_REPO/releases/download/$TAG/HoTTy-$VERSION.zip"
 
 step() { print -P "\n%F{blue}==>%f %B$1%b" }
 
@@ -57,7 +57,7 @@ BUILD=${BUILD_NUMBER:-$(( $(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $BUILD" "$PLIST"
 sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $VERSION;/; s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = $BUILD;/" \
   HoTty.xcodeproj/project.pbxproj
-echo "HoTty $VERSION (build $BUILD)"
+echo "HoTTy $VERSION (build $BUILD)"
 
 step "Signing identity"
 pick() { security find-identity -v -p codesigning | awk -v k="$1" '$0 ~ k && !/REVOKED/ {print $2; exit}' }
@@ -75,7 +75,7 @@ security find-identity -v -p codesigning | grep "$IDENTITY" | sed 's/^ *[0-9]*) 
 
 step "Build (Apple silicon + Intel)"
 UNIVERSAL=1 SIGN_IDENTITY="$IDENTITY" ./scripts/build.sh
-APP=build/HoTty.app
+APP=build/HoTTy.app
 codesign --verify --deep --strict "$APP"
 echo "Architectures: $(lipo -archs "$APP/Contents/MacOS/HoTty")"
 
@@ -111,7 +111,7 @@ if (( ! PUBLISH )); then
 fi
 
 step "Publish $TAG to $RELEASE_REPO"
-gh release create "$TAG" "$ZIP" --repo "$RELEASE_REPO" --title "HoTty $VERSION" \
+gh release create "$TAG" "$ZIP" --repo "$RELEASE_REPO" --title "HoTTy $VERSION" \
   --notes "Install or update with: brew install ${TAP_REPO%%/*}/tap/hotty"
 curl -fsIL "$URL" >/dev/null && echo "Download is live: $URL"
 
@@ -134,6 +134,6 @@ else
 fi
 rm -rf "$TAP_DIR"
 
-step "Released HoTty $VERSION"
+step "Released HoTTy $VERSION"
 echo "Users install it with:  brew install ${TAP_REPO%%/*}/tap/hotty"
 echo "and update with:        brew upgrade hotty"

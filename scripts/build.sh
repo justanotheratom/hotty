@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds HoTty.app into ./build and signs it.
+# Builds HoTTy.app into ./build and signs it.
 # Signing with a stable identity keeps the Accessibility grant across rebuilds.
 # Override with: SIGN_IDENTITY="Developer ID Application: ..." scripts/build.sh
 # UNIVERSAL=1 builds for Apple silicon and Intel (used by scripts/release.sh).
@@ -12,7 +12,7 @@ ARCH_FLAGS=()
 swift build -c "$CONFIG" "${ARCH_FLAGS[@]}"
 BIN="$(swift build -c "$CONFIG" "${ARCH_FLAGS[@]}" --show-bin-path)/HoTty"
 
-APP=build/HoTty.app
+APP=build/HoTTy.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/HoTty"

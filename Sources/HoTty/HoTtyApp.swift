@@ -154,7 +154,7 @@ private struct MenuContent: View {
         Text(title)
         Text(subtitle)
         Divider()
-        Button("Open HoTty") { windows.showMain() }
+        Button("Open HoTTy") { windows.showMain() }
             .keyboardShortcut("o")
         if store.isPaused {
             Button("Resume dictation") { coordinator.resume() }
@@ -176,7 +176,7 @@ private struct MenuContent: View {
         Button("Settings…") { windows.showMain(.settings) }
             .keyboardShortcut(",")
         Divider()
-        Button("Quit HoTty") { NSApp.terminate(nil) }
+        Button("Quit HoTTy") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 
@@ -193,7 +193,7 @@ private struct MenuContent: View {
     }
 
     private var subtitle: String {
-        if !state.accessibilityGranted || state.microphone != .authorized { return "Open HoTty to fix it" }
+        if !state.accessibilityGranted || state.microphone != .authorized { return "Open HoTTy to fix it" }
         if store.isPaused { return "Holding won't start dictation" }
         if let e = state.triggerError { return e }
         return trigger == TriggerMode.touchHold.rawValue

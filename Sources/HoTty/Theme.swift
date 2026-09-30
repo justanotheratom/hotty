@@ -260,7 +260,7 @@ enum HoTtyMark {
             return true
         }
         img.isTemplate = true
-        img.accessibilityDescription = "HoTty"
+        img.accessibilityDescription = "HoTTy"
         return img
     }
 }

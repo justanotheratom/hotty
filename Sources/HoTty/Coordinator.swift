@@ -377,7 +377,7 @@ final class Coordinator: HoldDelegate {
     private var practiceCommitted = ""
 
     func practiceStart(_ cb: PracticeCallbacks) -> String? {
-        guard phase == .idle else { return "HoTty is busy with another dictation." }
+        guard phase == .idle else { return "HoTTy is busy with another dictation." }
         guard state.microphone == .authorized else { return "Allow the microphone first (step 2)." }
         if case .downloading(let f) = state.model { return "The speech model is still downloading (\(Int(f * 100))%)." }
         session += 1
