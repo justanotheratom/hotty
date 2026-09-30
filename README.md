@@ -36,6 +36,8 @@ write, so holding there is also *when* to listen.
 - Hold where you want the text: the caret moves there first (or keep the current caret — a setting).
 - Hold on selected text to replace it.
 - Automatic spacing when joining existing text, and mid-sentence lowercasing.
+- Custom vocabulary: words spelled exactly as you enter them (names, products, jargon),
+  and replacements — say one phrase, get other text typed.
 - Password fields are always skipped.
 
 **Two live-text modes** (switch any time)
@@ -196,7 +198,7 @@ Hold type and live-text mode can also be switched straight from the menu bar.
 
 **Recognition**
 - Languages are limited to what Apple's SpeechAnalyzer supports (~22 languages).
-- No custom vocabulary, no AI cleanup (filler removal, rephrasing), no voice commands.
+- No AI cleanup (filler removal, rephrasing) and no voice commands.
 - With AirPods as the microphone, the first dictation can start about a second late while
   Bluetooth switches modes.
 
@@ -323,7 +325,4 @@ and an Electron app) and with both hold types, and note in the PR what you tried
 
 ## License
 
-HoTTy is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
-free to use, modify and share for any noncommercial purpose — personal use, research,
-education, charities and public institutions. Commercial use needs a separate license
-from FUNGEE LLC.
+HoTTy is free and open source under the [MIT License](LICENSE).
