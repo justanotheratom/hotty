@@ -136,8 +136,8 @@ private struct MenuIcon: View {
 
     var body: some View {
         let s = coordinator.state
-        Image(systemName: s.listening ? "waveform.circle.fill"
-              : coordinator.store.isPaused ? "pause.circle" : "waveform")
+        Image(nsImage: HoTtyMark.image(s.listening ? .listening
+                                       : coordinator.store.isPaused ? .paused : .idle))
     }
 }
 
