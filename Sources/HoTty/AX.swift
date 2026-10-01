@@ -200,10 +200,38 @@ enum AX {
         AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     }
 
-    /// Electron apps only build their accessibility tree when asked this way.
-    static func enableManualAccessibility(pid: pid_t) {
-        let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    /// Chromium-based apps only build an accessibility tree for their web content when asked.
+    /// Electron apps take `AXManualAccessibility`. Apps embedding Chromium another way (ChatGPT's
+    /// web view, say) refuse that and need `AXEnhancedUserInterface`, which is reserved for them:
+    /// in ordinary apps it changes window behavior (animations, window managers).
+    static func enableWebAccessibility(_ app: NSRunningApplication) {
+        let el = AXUIElementCreateApplication(app.processIdentifier)
+        let manual = AXUIElementSetAttributeValue(el, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        guard manual == .attributeUnsupported, embedsChromium(app.bundleURL) else { return }
+        // Chromium reports an error here but applies it; the tree follows a moment later.
+        AXUIElementSetAttributeValue(el, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+    }
+
+    private static var chromiumBundles: [URL: Bool] = [:]
+
+    /// Whether a bundle ships Chromium: a framework with Chromium's crash handler in its Helpers.
+    private static func embedsChromium(_ bundle: URL?) -> Bool {
+        guard let bundle else { return false }
+        if let known = chromiumBundles[bundle] { return known }
+        let frameworks = bundle.appendingPathComponent("Contents/Frameworks")
+        var found = false
+        let fm = FileManager.default
+        for fw in (try? fm.contentsOfDirectory(atPath: frameworks.path)) ?? [] where fw.hasSuffix(".framework") {
+            let versions = frameworks.appendingPathComponent("\(fw)/Versions")
+            let dirs = ((try? fm.contentsOfDirectory(atPath: versions.path)) ?? []).map { versions.appendingPathComponent("\($0)/Helpers") }
+                + [frameworks.appendingPathComponent("\(fw)/Helpers")]
+            if dirs.contains(where: { ((try? fm.contentsOfDirectory(atPath: $0.path)) ?? []).contains { $0.hasSuffix("crashpad_handler") } }) {
+                found = true
+                break
+            }
+        }
+        chromiumBundles[bundle] = found
+        return found
     }
 
     /// Diagnostic: role chain from the element under `p` up to the window, plus the focused element.
@@ -230,10 +258,21 @@ enum AX {
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
+    /// Shows the system's Accessibility prompt, which also adds HoTTy to the list in System
+    /// Settings. Only once per build: after that HoTTy is already in the list, and another prompt
+    /// can't help. A switch that is on but doesn't take (a grant saved for a different signature of
+    /// the same app) needs HoTTy removed from the list and added again; see `staleGrantHint`.
     static func promptForTrust() {
+        let build = "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "")-\(Bundle.main.infoDictionary?["CFBundleVersion"] ?? "")"
+        guard UserDefaults.standard.string(forKey: promptedKey) != build else { return }
+        UserDefaults.standard.set(build, forKey: promptedKey)
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
     }
+
+    private static let promptedKey = "accessibilityPromptedBuild"
+
+    static let staleGrantHint = "Already switched on? Select HoTTy in the list, remove it with −, then add it again with +."
 }
 
 /// Converts between CG global coordinates (top-left origin) and Cocoa screen coordinates.

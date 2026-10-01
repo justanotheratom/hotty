@@ -30,6 +30,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var windows = Windows(coordinator: coordinator)
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        NSLog("HoTTy permissions at launch: accessibility=%d microphone=%d speech=%d onboarded=%d (%@)",
+              AX.isTrusted ? 1 : 0, AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
+              SFSpeechRecognizer.authorizationStatus().rawValue, UserDefaults.standard.bool(forKey: Pref.onboarded) ? 1 : 0,
+              Bundle.main.bundleIdentifier ?? "?")
         if !UserDefaults.standard.bool(forKey: Pref.onboarded) {
             // Onboarding asks for each permission with an explanation first.
             windows.showOnboarding()
@@ -86,7 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 let was = self.coordinator.state.accessibilityGranted
                 self.coordinator.refreshPermissions()
-                if !was && self.coordinator.state.accessibilityGranted { self.coordinator.applyTrigger() }
+                if !was && self.coordinator.state.accessibilityGranted {
+                    self.coordinator.applyTrigger()
+                    // The launch-time requests below failed while untrusted; ask again.
+                    Self.enableWebAccessibilityForRunningApps()
+                }
             }
         }
 
@@ -96,13 +104,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Chromium browsers (Edge, Chrome, Brave…) and Electron apps expose web content
         // to Accessibility only when asked: ask every app now and each one as it activates.
-        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
-            AX.enableManualAccessibility(pid: app.processIdentifier)
-        }
+        Self.enableWebAccessibilityForRunningApps()
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
             if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
-                AX.enableManualAccessibility(pid: app.processIdentifier)
+                AX.enableWebAccessibility(app)
             }
+        }
+    }
+
+    private static func enableWebAccessibilityForRunningApps() {
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            AX.enableWebAccessibility(app)
         }
     }
 
