@@ -232,7 +232,7 @@ private struct HomePage: View {
                 Text(ax ? "HoTTy can't hear you" : "HoTTy can't type into other apps")
                     .font(.system(size: 14, weight: .bold))
                 Text(ax ? "Microphone access is off. Turn it on and dictation starts working again."
-                        : "Accessibility access was turned off. Turn it back on and dictation starts working again.")
+                        : "Accessibility access is off. Turn it on and dictation starts working again. \(AX.staleGrantHint)")
                     .font(.system(size: 13)).foregroundStyle(Theme.mute)
             }
             Spacer()
@@ -985,7 +985,7 @@ private struct PermissionSettings: View {
                             DispatchQueue.main.async { coordinator.refreshPermissions() }
                         }
                     }, open: SystemSettings.speech)
-                row("A", "Accessibility", "To notice holds and type into other apps",
+                row("A", "Accessibility", state.accessibilityGranted ? "To notice holds and type into other apps" : AX.staleGrantHint,
                     ok: state.accessibilityGranted, undetermined: false, ask: {}, open: SystemSettings.accessibility)
             }
             .card()

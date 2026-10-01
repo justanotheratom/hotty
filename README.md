@@ -104,7 +104,9 @@ scripts/build.sh --run
 ```
 
 `scripts/build.sh` builds a release binary with SwiftPM, wraps it into
-`build/HoTTy.app`, signs it, and (with `--run`) launches it. HoTTy shows in the Dock and
+`build/HoTTy.app`, signs it, and (with `--run`) launches it. It's a development build named
+**HoTTy Dev** (`llc.fungee.hotty.dev`, also what Xcode's Debug configuration uses), so it
+keeps its own permissions and settings next to a Homebrew install. HoTTy shows in the Dock and
 in the menu bar (the H icon); click either to open it. It can also be built and run
 from Xcode: open `HoTty.xcodeproj` and press ⌘R.
 
@@ -119,7 +121,7 @@ SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" scripts/build.sh --run
 
 **First launch — grant permissions** (for Homebrew installs too). macOS will ask for:
 1. **Accessibility** — to detect text fields, see the trackpad hold, and type text.
-   System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTTy. HoTTy picks it
+   System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTTy (or HoTTy Dev). HoTTy picks it
    up within a couple of seconds; no restart needed.
 2. **Microphone** — to hear you.
 3. **Speech Recognition**, if prompted.

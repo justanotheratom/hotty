@@ -259,7 +259,7 @@ private struct AccessStep: View {
                             ProgressView().controlSize(.small)
                             Text("Waiting for access…").font(.system(size: 13, weight: .semibold))
                         }
-                        Text("This page moves on by itself once HoTTy is switched on.")
+                        Text("This page moves on by itself once HoTTy is switched on. \(AX.staleGrantHint)")
                             .font(.system(size: 13)).foregroundStyle(Theme.mute)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("Open System Settings") { SystemSettings.accessibility() }

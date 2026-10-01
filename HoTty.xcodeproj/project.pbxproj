@@ -186,7 +186,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = llc.fungee.hotty;
+				PRODUCT_BUNDLE_IDENTIFIER = llc.fungee.hotty.dev;
 				PRODUCT_NAME = HoTty;
 				SWIFT_VERSION = 5.0;
 			};
