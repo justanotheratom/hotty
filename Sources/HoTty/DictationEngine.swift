@@ -3,9 +3,10 @@ import AVFoundation
 import CoreAudio
 import Speech
 
-/// One hold = one session: microphone → format conversion → SpeechAnalyzer.
-/// The analyzer is single-use (it finishes when input ends), so each session builds a
-/// new one; `.processLifetime` model retention keeps the model warm between sessions.
+/// One hold = one session: microphone → format conversion → the chosen recognizer.
+/// Apple: SpeechAnalyzer is single-use (it finishes when input ends), so each session builds
+/// a new one; `.processLifetime` model retention keeps the model warm between sessions.
+/// Phonon: Core ML runs in-process; each session is one PhononLive.
 @MainActor
 final class DictationEngine {
     struct Callbacks {
@@ -20,8 +21,10 @@ final class DictationEngine {
         case unsupportedLocale(Locale)
         case noAudioFormat
         case noMicrophone
+        case phononNotReady
         var errorDescription: String? {
             switch self {
+            case .phononNotReady: "Phonon-2 isn't loaded yet. Check Settings."
             case .noMicrophone: "No microphone input is available right now."
             case .unsupportedLocale(let l): "Speech recognition doesn't support \(l.identifier)."
             case .noAudioFormat: "No compatible audio format for the speech model."
@@ -46,6 +49,7 @@ final class DictationEngine {
     enum ModelState: Equatable {
         case checking
         case downloading(Double)   // 0…1
+        case preparing(String)     // Phonon: loading or warming up
         case ready
         case failed(String)
     }
@@ -71,11 +75,17 @@ final class DictationEngine {
         throw EngineError.unsupportedLocale(locale)
     }
 
-    /// Downloads the on-device model for the chosen locale if needed.
+    /// Downloads the on-device model for the chosen locale if needed, or starts the
+    /// loads Phonon-2.
     func ensureModel() async {
         ensureGeneration += 1
         let gen = ensureGeneration
         setStatus("Checking…", .checking)
+        if Pref.engine == .phonon {
+            await ensurePhonon(gen)
+            return
+        }
+        PhononEngine.shared.unload()
         do {
             let module = try await makeModule(for: Pref.locale)
             if let req = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
@@ -102,6 +112,24 @@ final class DictationEngine {
 
     private var ensureGeneration = 0
 
+    private func ensurePhonon(_ gen: Int) async {
+        let start = Date()
+        do {
+            try await PhononEngine.shared.ensureLoaded { [weak self] s in
+                guard let self, gen == self.ensureGeneration else { return }
+                self.setStatus(s, .preparing(s))
+            }
+            guard gen == ensureGeneration else { return }
+            NSLog("HoTty: Phonon-2 ready in %.1fs", Date().timeIntervalSince(start))
+            setStatus("Ready (Phonon-2, English)", .ready)
+        } catch {
+            NSLog("HoTty: Phonon-2 failed to load: \(error)")
+            guard gen == ensureGeneration else { return }
+            setStatus("Error: \(error.localizedDescription)", .failed(error.localizedDescription))
+        }
+    }
+
+
     private func setStatus(_ s: String, _ m: ModelState) {
         modelStatus = s
         model = m
@@ -119,6 +147,7 @@ final class DictationEngine {
     /// analyzer spins up, so the first word isn't lost.
     func start(_ cb: Callbacks) throws {
         cancel()
+        if Pref.engine == .phonon { return try startPhonon(cb) }
 
         let (stream, cont) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .unbounded)
         let (finishStream, finishCont) = AsyncStream<Void>.makeStream()
@@ -162,6 +191,31 @@ final class DictationEngine {
             } catch {
                 NSLog("HoTty dictation error: \(error)")
             }
+        }
+    }
+
+    private func startPhonon(_ cb: Callbacks) throws {
+        guard let model = PhononEngine.shared.model else { throw EngineError.phononNotReady }
+        let (finishStream, finishCont) = AsyncStream<Void>.makeStream()
+        let stream = PhononLive(model: model, partial: { s in DispatchQueue.main.async { cb.volatile(s) } },
+                                final: { s in DispatchQueue.main.async { cb.final(s) } })
+        let converter = FormatConverter()
+        converter.target = PhononLive.format
+        let tap: AVAudioNodeTapBlock = { buf, _ in
+            cb.levelSink(buf)
+            if let out = converter.convert(buf) { stream.append(out) }
+        }
+        finishSignal = finishCont
+        do {
+            try startCapture(tap: tap, onLost: cb.interrupted)
+        } catch {
+            finishSignal = nil
+            stream.cancel()
+            throw error
+        }
+        sessionTask = Task {
+            for await _ in finishStream {}   // until finish() or cancel()
+            if Task.isCancelled { stream.cancel() } else { await stream.finish() }
         }
     }
 
@@ -223,7 +277,7 @@ final class DictationEngine {
             forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.input != nil else { return }   // session already over
+                guard let self, self.finishSignal != nil else { return }   // session already over
                 do {
                     try self.startCapture(tap: tap, onLost: onLost)
                 } catch {

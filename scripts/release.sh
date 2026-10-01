@@ -74,7 +74,7 @@ fi
 security find-identity -v -p codesigning | grep "$IDENTITY" | sed 's/^ *[0-9]*) //'
 
 step "Build (Apple silicon + Intel)"
-UNIVERSAL=1 SIGN_IDENTITY="$IDENTITY" ./scripts/build.sh
+RELEASE=1 UNIVERSAL=1 SIGN_IDENTITY="$IDENTITY" ./scripts/build.sh
 APP=build/HoTty.app
 codesign --verify --deep --strict "$APP"
 echo "Architectures: $(lipo -archs "$APP/Contents/MacOS/HoTty")"

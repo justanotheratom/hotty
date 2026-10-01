@@ -141,6 +141,10 @@ final class Coordinator: HoldDelegate {
             overlay.notice("Speech model downloading · \(Int(f * 100))%", at: p, progress: f)
             return false
         }
+        if phase == .idle, case .preparing(let s) = state.model {
+            overlay.notice(s, at: p)
+            return false
+        }
         guard phase == .idle, state.microphone == .authorized,
               let target = AX.editableElement(at: p) else {
             NSLog("HoTty hold rejected at %@: phase=%@ mic=%d editable=%d", "\(p)", "\(phase)",
@@ -185,6 +189,8 @@ final class Coordinator: HoldDelegate {
             NSLog("HoTty: couldn't start audio: \(error)")
             if case DictationEngine.EngineError.noMicrophone = error {
                 overlay.notice("No microphone. Plug one in or pick another in Settings.", at: p)
+            } else if case DictationEngine.EngineError.phononNotReady = error {
+                overlay.notice(error.localizedDescription, at: p)
             }
             return false
         }
@@ -380,6 +386,7 @@ final class Coordinator: HoldDelegate {
         guard phase == .idle else { return "HoTty is busy with another dictation." }
         guard state.microphone == .authorized else { return "Allow the microphone first (step 2)." }
         if case .downloading(let f) = state.model { return "The speech model is still downloading (\(Int(f * 100))%)." }
+        if case .preparing(let s) = state.model { return s }
         session += 1
         let id = session
         practiceCommitted = ""
@@ -582,6 +589,11 @@ final class Coordinator: HoldDelegate {
     /// HOTTY_AUDIO_TEST=1: three start/finish cycles on the current input device, logged.
     func audioSelfTest(round: Int = 0) {
         guard round < 3 else { NSLog("HoTty audio test: done"); return }
+        guard state.model == .ready else {
+            // Phonon takes a few seconds to load; test once the engine can take audio.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.audioSelfTest(round: round) }
+            return
+        }
         var levels = 0
         let cb = DictationEngine.Callbacks(
             volatile: { NSLog("HoTty audio test: volatile %@", $0) },

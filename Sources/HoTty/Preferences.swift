@@ -48,6 +48,22 @@ enum CaretPlacement: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which speech recognizer turns audio into text.
+enum SpeechEngine: String, CaseIterable, Identifiable {
+    /// Apple's on-device SpeechAnalyzer, in any language it supports.
+    case apple
+    /// Fermion Research's Phonon-2, run in-process through Core ML. English only.
+    case phonon
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .apple: "Apple (built-in)"
+        case .phonon: "Phonon-2 (English)"
+        }
+    }
+}
+
 /// UserDefaults keys. Views bind with @AppStorage; engines read UserDefaults directly,
 /// which is thread-safe and lets the event-tap thread read without hopping to main.
 enum Pref {
@@ -56,6 +72,7 @@ enum Pref {
     static let caretPlacement = "caretPlacement"
     static let holdDuration = "holdDuration"
     static let localeID = "localeID"
+    static let speechEngine = "speechEngine"
     static let playSounds = "playSounds"
     static let ignoreThumbZone = "ignoreThumbZone"
     static let micUIDKey = "microphoneUID"
@@ -70,6 +87,7 @@ enum Pref {
             caretPlacement: CaretPlacement.atPointer.rawValue,
             holdDuration: 0.4,
             localeID: "",
+            speechEngine: SpeechEngine.apple.rawValue,
             playSounds: true,
             ignoreThumbZone: true,
             micUIDKey: "",
@@ -83,6 +101,7 @@ enum Pref {
     static var live: LiveMode { LiveMode(rawValue: d.string(forKey: liveMode) ?? "") ?? .overlay }
     static var caret: CaretPlacement { CaretPlacement(rawValue: d.string(forKey: caretPlacement) ?? "") ?? .atPointer }
     static var hold: TimeInterval { d.double(forKey: holdDuration).clamped(to: holdDurationRange) }
+    static var engine: SpeechEngine { SpeechEngine(rawValue: d.string(forKey: speechEngine) ?? "") ?? .apple }
     static var sounds: Bool { d.bool(forKey: playSounds) }
     static var thumbZone: Bool { d.bool(forKey: ignoreThumbZone) }
     /// Core Audio UID of the chosen microphone; empty means the system default.

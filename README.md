@@ -4,8 +4,8 @@ HoTty is a system-wide dictation utility for macOS. Put the pointer on any text 
 **hold the trackpad**, and talk — your words appear at that spot as you speak. Hold on
 selected text and your speech replaces just that text. Let go and you're done.
 
-Speech recognition runs entirely **on-device** with Apple's SpeechAnalyzer
-(macOS 26), so there's no account, no cloud service, no per-word cost, and it works offline.
+Speech recognition runs entirely **on-device**, with Apple's SpeechAnalyzer (macOS 26) or,
+optionally, Fermion Research's [Phonon-2](https://www.fermionresearch.com/research/phonon-2/), so there's no account, no cloud service, no per-word cost, and it works offline.
 
 What makes it different from keyboard-shortcut dictation apps is the trigger: the
 trackpad hold is the whole interface. The pointer already marks *where* you want to
@@ -55,6 +55,24 @@ to change your mind.
 - End with the overlay's **Cancel / Finish / Send** buttons — the only way out. Finish and
   Send bring the original field back to the front first.
 
+**Two speech engines** (switch any time from the menu bar or Settings)
+- **Apple (built-in)** — SpeechAnalyzer, in any language it supports. Nothing to install.
+- **Phonon-2 (English)** — Fermion Research's open model (a five-value quantized NVIDIA
+  Parakeet TDT 0.6B v3, CC-BY-4.0), run inside HoTty through Core ML: the encoder on the
+  Neural Engine, in about 250 MB of memory. Partial results refresh every half second and a
+  phrase is finalized after a short pause.
+
+  The models aren't shipped yet; build and install them once (needs [uv](https://docs.astral.sh/uv)
+  and Xcode, takes about 10 minutes, installs ~300 MB to
+  `~/Library/Application Support/HoTty/Models/Phonon-2`):
+
+  ```bash
+  scripts/convert-phonon.sh
+  ```
+
+  The first launch with Phonon-2 on a Mac compiles it for the Neural Engine (about 5 minutes,
+  once; macOS caches it). Vocabulary words aren't passed to Phonon-2, but replacements still apply.
+
 **Other**
 - Menu bar app with quick switches for hold type and live-text mode.
 - Language picker for any locale SpeechAnalyzer supports; the model downloads on first use.
@@ -93,7 +111,9 @@ scripts/build.sh --run
 ```
 
 `scripts/build.sh` builds a release binary with SwiftPM, wraps it into
-`build/HoTty.app`, signs it, and (with `--run`) launches it. HoTty shows in the Dock and
+`build/HoTty.app`, signs it, and (with `--run`) launches it. It's a development build named
+**HoTty Dev** (`llc.fungee.hotty.dev`, also what Xcode's Debug configuration uses), so it
+keeps its own permissions and settings next to a Homebrew install. HoTty shows in the Dock and
 in the menu bar (the H icon); click either to open it. It can also be built and run
 from Xcode: open `HoTty.xcodeproj` and press ⌘R.
 
@@ -108,7 +128,7 @@ SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" scripts/build.sh --run
 
 **First launch — grant permissions** (for Homebrew installs too). macOS will ask for:
 1. **Accessibility** — to detect text fields, see the trackpad hold, and type text.
-   System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTty. HoTty picks it
+   System Settings ▸ Privacy & Security ▸ Accessibility ▸ enable HoTty (or HoTty Dev). HoTty picks it
    up within a couple of seconds; no restart needed.
 2. **Microphone** — to hear you.
 3. **Speech Recognition**, if prompted.

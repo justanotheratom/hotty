@@ -26,10 +26,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
     private var lastTrigger = Pref.trigger
     private var lastLocale = Pref.locale.identifier
+    private var lastEngine = Pref.engine
     private var permissionTimer: Timer?
     lazy var windows = Windows(coordinator: coordinator)
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        NSLog("HoTty permissions at launch: accessibility=%d microphone=%d speech=%d onboarded=%d (%@)",
+              AX.isTrusted ? 1 : 0, AVCaptureDevice.authorizationStatus(for: .audio).rawValue,
+              SFSpeechRecognizer.authorizationStatus().rawValue, UserDefaults.standard.bool(forKey: Pref.onboarded) ? 1 : 0,
+              Bundle.main.bundleIdentifier ?? "?")
         if !UserDefaults.standard.bool(forKey: Pref.onboarded) {
             // Onboarding asks for each permission with an explanation first.
             windows.showOnboarding()
@@ -86,7 +91,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 let was = self.coordinator.state.accessibilityGranted
                 self.coordinator.refreshPermissions()
-                if !was && self.coordinator.state.accessibilityGranted { self.coordinator.applyTrigger() }
+                if !was && self.coordinator.state.accessibilityGranted {
+                    self.coordinator.applyTrigger()
+                    // The launch-time requests below failed while untrusted; ask again.
+                    Self.enableWebAccessibilityForRunningApps()
+                }
             }
         }
 
@@ -96,13 +105,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Chromium browsers (Edge, Chrome, Brave…) and Electron apps expose web content
         // to Accessibility only when asked: ask every app now and each one as it activates.
-        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
-            AX.enableManualAccessibility(pid: app.processIdentifier)
-        }
+        Self.enableWebAccessibilityForRunningApps()
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
             if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
-                AX.enableManualAccessibility(pid: app.processIdentifier)
+                AX.enableWebAccessibility(app)
             }
+        }
+    }
+
+    private static func enableWebAccessibilityForRunningApps() {
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            AX.enableWebAccessibility(app)
         }
     }
 
@@ -122,8 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lastTrigger = Pref.trigger
             coordinator.applyTrigger()
         }
-        if Pref.locale.identifier != lastLocale {
+        if Pref.locale.identifier != lastLocale || Pref.engine != lastEngine {
             lastLocale = Pref.locale.identifier
+            lastEngine = Pref.engine
             coordinator.ensureModel()
         }
     }
@@ -146,6 +160,7 @@ private struct MenuContent: View {
     let windows: Windows
     @AppStorage(Pref.triggerMode) private var trigger = TriggerMode.clickHold.rawValue
     @AppStorage(Pref.liveMode) private var live = LiveMode.overlay.rawValue
+    @AppStorage(Pref.speechEngine) private var engine = SpeechEngine.apple.rawValue
 
     private var state: AppState { coordinator.state }
     private var store: Store { coordinator.store }
@@ -168,6 +183,9 @@ private struct MenuContent: View {
         Picker("While speaking", selection: $live) {
             ForEach(LiveMode.allCases) { Text($0.title).tag($0.rawValue) }
         }
+        Picker("Speech recognition", selection: $engine) {
+            ForEach(SpeechEngine.allCases) { Text($0.title).tag($0.rawValue) }
+        }
         Divider()
         Button("Copy last dictation") { coordinator.copyLast() }
             .keyboardShortcut("c", modifiers: [.option, .command])
@@ -189,12 +207,15 @@ private struct MenuContent: View {
         }
         if state.triggerError != nil { return "Hold detection is off" }
         if case .downloading(let f) = state.model { return "Downloading speech model · \(Int(f * 100))%" }
+        if case .preparing(let s) = state.model { return s }
+        if case .failed = state.model { return "Speech model unavailable" }
         return "Ready"
     }
 
     private var subtitle: String {
         if !state.accessibilityGranted || state.microphone != .authorized { return "Open HoTty to fix it" }
         if store.isPaused { return "Holding won't start dictation" }
+        if case .failed = state.model { return "Open Settings to fix it" }
         if let e = state.triggerError { return e }
         return trigger == TriggerMode.touchHold.rawValue
             ? "Rest a finger in a text field to speak" : "Press and hold in a text field to speak"

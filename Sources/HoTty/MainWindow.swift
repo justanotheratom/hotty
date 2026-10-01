@@ -232,7 +232,7 @@ private struct HomePage: View {
                 Text(ax ? "HoTty can't hear you" : "HoTty can't type into other apps")
                     .font(.system(size: 14, weight: .bold))
                 Text(ax ? "Microphone access is off. Turn it on and dictation starts working again."
-                        : "Accessibility access was turned off. Turn it back on and dictation starts working again.")
+                        : "Accessibility access is off. Turn it on and dictation starts working again. \(AX.staleGrantHint)")
                     .font(.system(size: 13)).foregroundStyle(Theme.mute)
             }
             Spacer()
@@ -859,6 +859,7 @@ private struct DictationSettings: View {
 /// Language picker over the locales the speech model supports.
 struct LanguagePicker: View {
     @AppStorage(Pref.localeID) private var localeID = ""
+    @AppStorage(Pref.speechEngine) private var engine = SpeechEngine.apple.rawValue
     @State private var locales: [Locale] = []
     var width: CGFloat = 270
 
@@ -869,6 +870,17 @@ struct LanguagePicker: View {
     }
 
     var body: some View {
+        if engine == SpeechEngine.phonon.rawValue {
+            Picker("Language", selection: .constant("en")) { Text("English").tag("en") }
+                .labelsHidden()
+                .frame(width: width)
+                .disabled(true)
+        } else {
+            localePicker
+        }
+    }
+
+    private var localePicker: some View {
         Picker("Language", selection: $localeID) {
             Text("System — \(Self.systemName)").tag("")
             Divider()
@@ -894,6 +906,7 @@ func modelLine(_ m: DictationEngine.ModelState) -> String {
     switch m {
     case .checking: "Checking the speech model…"
     case .downloading(let f): "Downloading speech model · \(Int(f * 100))%"
+    case .preparing(let s): s
     case .ready: "Speech model ready · works offline"
     case .failed(let e): "Speech model unavailable: \(e)"
     }
@@ -904,13 +917,31 @@ private struct GeneralSettings: View {
     let windows: Windows
     @AppStorage(Pref.micUIDKey) private var micUID = ""
     @AppStorage(Pref.playSounds) private var sounds = true
+    @AppStorage(Pref.speechEngine) private var engine = SpeechEngine.apple.rawValue
     @State private var login = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var mics: [Microphones.Device] = []
 
     var body: some View {
         VStack(spacing: 0) {
-            SetRow(title: "Language", sub: modelLine(coordinator.state.model), first: true) {
+            SetRow(title: "Speech recognition", sub: engineSub, first: true) {
+                Picker("Speech recognition", selection: $engine) {
+                    ForEach(SpeechEngine.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                .labelsHidden()
+                .frame(width: 230)
+            }
+            if phononMissing {
+                SetRow(title: "Install Phonon-2", sub: "Build the model with scripts/convert-phonon.sh, then press Retry") {
+                    Button("Show folder") {
+                        let dir = PhononModel.directory
+                        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                        NSWorkspace.shared.activateFileViewerSelecting([dir])
+                    }
+                    .buttonStyle(GhostButtonStyle())
+                }
+            }
+            SetRow(title: "Language", sub: modelLine(coordinator.state.model)) {
                 if case .failed = coordinator.state.model {
                     Button("Retry") { coordinator.ensureModel() }.buttonStyle(GhostButtonStyle())
                 }
@@ -950,6 +981,19 @@ private struct GeneralSettings: View {
     }
 }
 
+private extension GeneralSettings {
+    var engineSub: String {
+        engine == SpeechEngine.phonon.rawValue
+            ? "Fermion Research's Phonon-2, on this Mac through Core ML"
+            : "Apple's on-device model, in many languages"
+    }
+
+    var phononMissing: Bool {
+        guard engine == SpeechEngine.phonon.rawValue, case .failed(let e) = coordinator.state.model else { return false }
+        return e.hasPrefix("The Phonon-2 model isn't installed")
+    }
+}
+
 /// Registers or removes HoTty as a login item; returns an error message on failure.
 @MainActor
 func setLoginItem(_ on: Bool) -> String? {
@@ -985,7 +1029,7 @@ private struct PermissionSettings: View {
                             DispatchQueue.main.async { coordinator.refreshPermissions() }
                         }
                     }, open: SystemSettings.speech)
-                row("A", "Accessibility", "To notice holds and type into other apps",
+                row("A", "Accessibility", state.accessibilityGranted ? "To notice holds and type into other apps" : AX.staleGrantHint,
                     ok: state.accessibilityGranted, undetermined: false, ask: {}, open: SystemSettings.accessibility)
             }
             .card()
