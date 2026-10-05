@@ -156,11 +156,33 @@ final class HeaderDragWindow: NSWindow {
     }
 
     /// Follows System Settings › Desktop & Dock › "Double-click a window's title bar to".
+    /// The choices are stored as "Fill", "Maximize" (Zoom), "Minimize" and "None". When
+    /// it's unset, macOS fills unless the older minimize-on-double-click switch is on.
     private func titleBarDoubleClick() {
-        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        let defaults = UserDefaults.standard
+        switch defaults.string(forKey: "AppleActionOnDoubleClick") {
+        case "Maximize": performZoom(nil)
         case "Minimize": performMiniaturize(nil)
         case "None": break
-        default: performZoom(nil)
+        case "Fill": toggleFill()
+        case nil: defaults.bool(forKey: "AppleMiniaturizeOnDoubleClick") ? performMiniaturize(nil) : toggleFill()
+        default: break   // an action this macOS doesn't know yet: do nothing, like the system
+        }
+    }
+
+    /// The frame before Fill, so a second double-click puts the window back.
+    private var frameBeforeFill: NSRect?
+
+    /// Fill: the space between the menu bar and the Dock. Double-clicking a filled
+    /// window restores its previous size and position.
+    private func toggleFill() {
+        guard let area = screen?.visibleFrame else { return }
+        if let previous = frameBeforeFill, frame.equalTo(area) {
+            frameBeforeFill = nil
+            setFrame(previous, display: true, animate: true)
+        } else {
+            frameBeforeFill = frame
+            setFrame(area, display: true, animate: true)
         }
     }
 }
