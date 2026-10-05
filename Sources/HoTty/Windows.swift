@@ -170,20 +170,26 @@ final class HeaderDragWindow: NSWindow {
         }
     }
 
-    /// The frame before Fill, so a second double-click puts the window back.
-    private var frameBeforeFill: NSRect?
+    /// Fill goes through the same AppKit command as Window › Move & Resize › Fill, so macOS
+    /// owns the geometry, including the "Tiled windows have margins" inset. Double-clicking
+    /// a filled window un-tiles it back to its previous frame, as the native title bar does.
+    /// Both selectors are private; if a future macOS drops them, fall back to Zoom.
+    private static let fill = Selector(("_zoomFill:"))
+    private static let untile = Selector(("_zoomUntile:"))
 
-    /// Fill: the space between the menu bar and the Dock. Double-clicking a filled
-    /// window restores its previous size and position.
     private func toggleFill() {
-        guard let area = screen?.visibleFrame else { return }
-        if let previous = frameBeforeFill, frame.equalTo(area) {
-            frameBeforeFill = nil
-            setFrame(previous, display: true, animate: true)
-        } else {
-            frameBeforeFill = frame
-            setFrame(area, display: true, animate: true)
-        }
+        guard responds(to: Self.fill), responds(to: Self.untile) else { return performZoom(nil) }
+        perform(isFilled ? Self.untile : Self.fill, with: nil)
+    }
+
+    /// Filled windows sit inside the visible frame with the same gap on every side:
+    /// none, or the tiling margin.
+    private var isFilled: Bool {
+        guard let area = screen?.visibleFrame else { return false }
+        let gaps = [frame.minX - area.minX, area.maxX - frame.maxX,
+                    frame.minY - area.minY, area.maxY - frame.maxY]
+        guard let lo = gaps.min(), let hi = gaps.max() else { return false }
+        return lo >= -1 && hi <= 24 && hi - lo <= 2
     }
 }
 
